@@ -1,4 +1,4 @@
-sac2mseed - Convert SAC waveform data to Mini-SEED.
+ascii2mseed - Convert ASCII time series data to Mini-SEED.
 
 -- Building/Installing --
 
