@@ -168,18 +168,16 @@ packtraces (flag flush)
 
 /***************************************************************************
  * ascii2group:
- * Read a SAC file and add data samples to a MSTraceGroup.  As the SAC
+ *
+ * Read an ASCII file and add data samples to a MSTraceGroup.  As the
  * data is read in a MSRecord struct is used as a holder for the input
  * information.
  *
  * Returns 0 on success, and -1 on failure
  ***************************************************************************/
 static int
-sac2group (char *infile, MSTraceGroup *mstg)
+ascii2group (char *infile, MSTraceGroup *mstg)
 {
-
-CHAD
-
   FILE *ifp = 0;
   MSRecord *msr = 0;
   MSTrace *mst;
@@ -187,12 +185,10 @@ CHAD
   struct blkt_1001_s Blkt1001;
   struct blkt_100_s Blkt100;
   
-  struct SACHeader sh;
   float *fdata = 0;
   int32_t *idata = 0;
   int dataidx;
   int datacnt;
-  long long int scaling = datascaling;
   
   /* Open input file */
   if ( (ifp = fopen (sacfile, "rb")) == NULL )
@@ -200,28 +196,6 @@ CHAD
       fprintf (stderr, "Cannot open input file: %s (%s)\n",
 	       sacfile, strerror(errno));
       return -1;
-    }
-  
-  /* Parse input SAC file into a header structure and data buffer */
-  if ( (datacnt = parsesac (ifp, &sh, &fdata, sacformat, verbose, sacfile)) < 0 )
-    {
-      fprintf (stderr, "Error parsing %s\n", sacfile);
-      
-      return -1;
-    }
-
-  /* Write metadata to file if requested */
-  if ( mfp )
-    {
-      if ( verbose )
-	fprintf (stderr, "[%s] Writing metadata to %s\n", sacfile, metafile);
-      
-      if ( writemetadata (&sh) )
-	{
-	  fprintf (stderr, "Error writing metadata to file '%s'\n", metafile);
-	  
-	  return -1;
-	}
     }
   
   /* Open output file if needed */
@@ -232,15 +206,17 @@ CHAD
       strncpy (mseedoutputfile, sacfile, sizeof(mseedoutputfile)-6 );
       namelen = strlen (sacfile);
       
-      /* Truncate file name if .sac is at the end */
-      if ( namelen > 4 )
-	if ( (*(mseedoutputfile + namelen - 1) == 'c' || *(mseedoutputfile + namelen - 1) == 'C') &&
-             (*(mseedoutputfile + namelen - 2) == 'a' || *(mseedoutputfile + namelen - 2) == 'A') &&
-             (*(mseedoutputfile + namelen - 3) == 's' || *(mseedoutputfile + namelen - 3) == 'S') &&
-             (*(mseedoutputfile + namelen - 4) == '.') )
+      /* Truncate file name if .ascii is at the end */
+      if ( namelen > 6 )
+	if ( (*(mseedoutputfile + namelen - 1) == 'a' || *(mseedoutputfile + namelen - 1) == 'A') &&
+             (*(mseedoutputfile + namelen - 2) == 's' || *(mseedoutputfile + namelen - 2) == 'S') &&
+             (*(mseedoutputfile + namelen - 3) == 'c' || *(mseedoutputfile + namelen - 3) == 'C') &&
+             (*(mseedoutputfile + namelen - 4) == 'i' || *(mseedoutputfile + namelen - 4) == 'I') &&
+             (*(mseedoutputfile + namelen - 5) == 'i' || *(mseedoutputfile + namelen - 5) == 'I') &&
+             (*(mseedoutputfile + namelen - 6) == '.') )
 	  
 	  {
-	    *(mseedoutputfile + namelen - 4) = '\0';
+	    *(mseedoutputfile + namelen - 6) = '\0';
 	  }
       
       /* Add .mseed to the file name */
@@ -260,40 +236,11 @@ CHAD
       return -1;
     }
   
-  /* Determine autoscaling */
-  if ( scaling == 0 && encoding != 4 )
-    {
-      float datamin, datamax;
-      int fractional;
-      long long int autoscale;
-      
-      /* Determine data sample minimum and maximum
-       * Detect if scaling by 1 will result in truncation (fractional=1) */
-      datamin = datamax = *fdata;
-      fractional = 0;
-      for ( dataidx=1; dataidx < datacnt; dataidx++ )
-	{
-	  if ( *(fdata+dataidx) < datamin ) datamin =  *(fdata+dataidx);
-	  if ( *(fdata+dataidx) > datamax ) datamax =  *(fdata+dataidx);
-	  
-	  if ( ! fractional )
-	    if ( *(fdata+dataidx) - (int) *(fdata+dataidx) > 0.000001 )
-	      fractional = 1;
-	}
-      
-      autoscale = 1;
-      
-      if ( fractional )
-	{
-	  for (autoscale=1; abs ((int32_t) (datamax * autoscale)) < 100000; autoscale *= 10) {}
-	  
-	  if ( abs ((int32_t) (datamin * autoscale)) < 10 )
-	    fprintf (stderr, "WARNING Large sample value range (%g/%g), autoscaling might be a bad idea\n",
-		     datamax, datamin);
-	}
-      
-      scaling = autoscale;
-    }
+  CHAD
+
+  /* Allocate space for data samples */
+  *data = (float *) malloc (sizeof(float) * sh->npts);
+  memset (*data, 0, (sizeof(float) * sh->npts));
 
   /* Populate MSRecord structure with header details */
   if ( strncmp (SUNDEF, sh.knetwk, 8) ) ms_strncpclean (msr->network, sh.knetwk, 2);
@@ -309,9 +256,6 @@ CHAD
   
   msr->starttime = ms_time2hptime (sh.nzyear, sh.nzjday, sh.nzhour, sh.nzmin, sh.nzsec, sh.nzmsec * 1000);
   
-  /* Adjust for Begin ('B' SAC variable) time offset */
-  msr->starttime += (double) sh.b * HPTMODULUS;
-
   /* Calculate sample rate from interval(period) rounding to nearest 0.000001 Hz */
   msr->samprate = (double) ((int)((1 / sh.delta) * 100000 + 0.5)) / 100000;
   
@@ -402,7 +346,7 @@ CHAD
     msr_free (&msr);
   
   return 0;
-}  /* End of sac2group() */
+}  /* End of ascii2group() */
 
 
 /***************************************************************************
@@ -454,41 +398,6 @@ parsesac (FILE *ifp, struct SACHeader *sh, float **data, int format,
   rewind (ifp);
   
   
-  /* Read the header */
-  if ( format == 1 )  /* Process SAC ALPHA header */
-    {
-      if ( (rv = readalphaheader (ifp, sh)) )
-	{
-	  fprintf (stderr, "[%s] Error parsing SAC ALPHA header at line %d\n",
-		   sacfile, rv);
-	  return -1;
-	}
-    }
-  else if ( format >= 2 && format <= 4 ) /* Process SAC binary header */
-    {
-      if ( readbinaryheader (ifp, sh, &format, &swapflag, verbose, sacfile) )
-	{
-	  fprintf (stderr, "[%s] Error parsing SAC header\n", sacfile);
-	  return -1;
-	}
-    }
-  else
-    {
-      fprintf (stderr, "[%s] Unrecognized format value: %d\n", sacfile, format);
-      return -1;
-    }
-  
-  /* Sanity check the start time */
-  if ( sh->nzyear < 1900 || sh->nzyear >3000 ||
-       sh->nzjday < 1 || sh->nzjday > 366 ||
-       sh->nzhour < 0 || sh->nzhour > 23 ||
-       sh->nzmin < 0 || sh->nzmin > 59 ||
-       sh->nzsec < 0 || sh->nzsec > 60 ||
-       sh->nzmsec < 0 || sh->nzmsec > 999999 )
-    {
-      fprintf (stderr, "[%s] Unrecognized format (not SAC?)\n", sacfile);
-      return -1;
-    }
   
   if ( verbose )
     {
@@ -527,9 +436,6 @@ parsesac (FILE *ifp, struct SACHeader *sh, float **data, int format,
     }
   
 
-  /* Allocate space for data samples */
-  *data = (float *) malloc (sizeof(float) * sh->npts);
-  memset (*data, 0, (sizeof(float) * sh->npts));
   
   /* Read the data samples */
   if ( format == 1 )  /* Process SAC ALPHA data */
