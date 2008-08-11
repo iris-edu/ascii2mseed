@@ -26,8 +26,8 @@ struct listnode {
   struct listnode *next;
 };
 
-static void packtraces (flag flush);
-static int ascii2group (char *infile, MSTraceGroup *mstg);
+static void packtraces (MSTraceGroup *mstg, flag flush);
+static int packascii (char *infile);
 
 static int readalphaheader (FILE *ifp, struct SACHeader *sh);
 static int readalphadata (FILE *ifp, float *data, int datacnt);
@@ -50,8 +50,6 @@ static FILE *ofp         = 0;
 /* A list of input files */
 struct listnode *filelist = 0;
 
-static MSTraceGroup *mstg = 0;
-
 static int packedtraces  = 0;
 static int packedsamples = 0;
 static int packedrecords = 0;
@@ -64,9 +62,6 @@ main (int argc, char **argv)
   /* Process given parameters (command line and parameter file) */
   if (parameter_proc (argc, argv) < 0)
     return -1;
-  
-  /* Init MSTraceGroup */
-  mstg = mst_initgroup (mstg);
   
   /* Open the output file if specified */
   if ( outputfile )
@@ -83,29 +78,14 @@ main (int argc, char **argv)
         }
     }
   
-  /* Open the metadata output file if specified */
-  if ( metafile )
-    {
-      if ( strcmp (metafile, "-") == 0 )
-        {
-          mfp = stdout;
-        }
-      else if ( (mfp = fopen (metafile, "wb")) == NULL )
-        {
-          fprintf (stderr, "Cannot open metadata output file: %s (%s)\n",
-                   metafile, strerror(errno));
-          return -1;
-        }
-    }
-  
-  /* Read input SAC files into MSTraceGroup */
+  /* Read and convert input files */
   flp = filelist;
   while ( flp != 0 )
     {
       if ( verbose )
 	fprintf (stderr, "Reading %s\n", flp->data);
-
-      sac2group (flp->data, mstg);
+      
+      ascii2group (flp->data, mstg);
       
       flp = flp->next;
     }
@@ -132,7 +112,7 @@ main (int argc, char **argv)
  * Returns 0 on success, and -1 on failure
  ***************************************************************************/
 static void
-packtraces (flag flush)
+packtraces (MSTraceGroup *mstg, flag flush)
 {
   MSTrace *mst;
   int trpackedsamples = 0;
@@ -141,7 +121,6 @@ packtraces (flag flush)
   mst = mstg->traces;
   while ( mst )
     {
-      
       if ( mst->numsamples <= 0 )
 	{
 	  mst = mst->next;
@@ -167,20 +146,19 @@ packtraces (flag flush)
 
 
 /***************************************************************************
- * ascii2group:
+ * packascii:
  *
- * Read an ASCII file and add data samples to a MSTraceGroup.  As the
- * data is read in a MSRecord struct is used as a holder for the input
- * information.
+ * Read an ASCII file and pack Mini-SEED.
  *
  * Returns 0 on success, and -1 on failure
  ***************************************************************************/
 static int
-ascii2group (char *infile, MSTraceGroup *mstg)
+packascii (char *infile)
 {
   FILE *ifp = 0;
   MSRecord *msr = 0;
   MSTrace *mst;
+  MSTraceGroup *mstg = 0;
   struct blkt_1000_s Blkt1000;
   struct blkt_1001_s Blkt1001;
   struct blkt_100_s Blkt100;
@@ -190,11 +168,14 @@ ascii2group (char *infile, MSTraceGroup *mstg)
   int dataidx;
   int datacnt;
   
+  /* Init MSTraceGroup */
+  mstg = mst_initgroup (mstg);
+  
   /* Open input file */
-  if ( (ifp = fopen (sacfile, "rb")) == NULL )
+  if ( (ifp = fopen (infile, "rb")) == NULL )
     {
       fprintf (stderr, "Cannot open input file: %s (%s)\n",
-	       sacfile, strerror(errno));
+	       infile, strerror(errno));
       return -1;
     }
   
@@ -203,8 +184,8 @@ ascii2group (char *infile, MSTraceGroup *mstg)
     {
       char mseedoutputfile[1024];
       int namelen;
-      strncpy (mseedoutputfile, sacfile, sizeof(mseedoutputfile)-6 );
-      namelen = strlen (sacfile);
+      strncpy (mseedoutputfile, infile, sizeof(mseedoutputfile)-6 );
+      namelen = strlen (infile);
       
       /* Truncate file name if .ascii is at the end */
       if ( namelen > 6 )
@@ -273,7 +254,7 @@ ascii2group (char *infile, MSTraceGroup *mstg)
       idata = (int32_t *) malloc (datacnt * sizeof(int32_t));
       
       if ( verbose )
-	fprintf (stderr, "[%s] Creating integer data scaled by: %lld\n", sacfile, scaling);
+	fprintf (stderr, "[%s] Creating integer data scaled by: %lld\n", infile, scaling);
       
       for ( dataidx=0; dataidx < datacnt; dataidx++ )
 	*(idata + dataidx) = (int32_t) (*(fdata + dataidx) * scaling);
@@ -285,13 +266,13 @@ ascii2group (char *infile, MSTraceGroup *mstg)
   if ( verbose >= 1 )
     {
       fprintf (stderr, "[%s] %d samps @ %.6f Hz for N: '%s', S: '%s', L: '%s', C: '%s'\n",
-	       sacfile, msr->numsamples, msr->samprate,
+	       infile, msr->numsamples, msr->samprate,
 	       msr->network, msr->station,  msr->location, msr->channel);
     }
   
   if ( ! (mst = mst_addmsrtogroup (mstg, msr, 0, -1.0, -1.0)) )
     {
-      fprintf (stderr, "[%s] Error adding samples to MSTraceGroup\n", sacfile);
+      fprintf (stderr, "[%s] Error adding samples to MSTraceGroup\n", infile);
     }
   
   /* Create an MSRecord template for the MSTrace by copying the current holder */
@@ -301,7 +282,7 @@ ascii2group (char *infile, MSTraceGroup *mstg)
       
       if ( ! mst->prvtptr )
 	{
-	  fprintf (stderr, "[%s] Error duplicate MSRecord for template\n", sacfile);
+	  fprintf (stderr, "[%s] Error duplicate MSRecord for template\n", infile);
 	  return -1;
 	}
       
@@ -323,7 +304,7 @@ ascii2group (char *infile, MSTraceGroup *mstg)
 	}
     }
   
-  packtraces (1);
+  packtraces (mstg, 1);
   packedtraces += mstg->numtraces;
   
   fclose (ifp);
@@ -333,7 +314,7 @@ ascii2group (char *infile, MSTraceGroup *mstg)
       fclose (ofp);
       ofp = 0;
     }
-
+  
   if ( fdata )
     free (fdata);
   
@@ -346,7 +327,7 @@ ascii2group (char *infile, MSTraceGroup *mstg)
     msr_free (&msr);
   
   return 0;
-}  /* End of ascii2group() */
+}  /* End of packascii() */
 
 
 /***************************************************************************
