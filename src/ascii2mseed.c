@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2008.197
+ * modified 2009.322
  ***************************************************************************/
 
 #include <stdio.h>
@@ -36,6 +36,8 @@ static int parameter_proc (int argcount, char **argvec);
 static char *getoptval (int argcount, char **argvec, int argopt);
 static int readlistfile (char *listfile);
 static void addnode (struct listnode **listroot, char *key, char *data);
+static int splitsrcname (char *srcname, char *net, char *sta, char *loc, char *chan,
+			 char *qual);
 static void record_handler (char *record, int reclen, void *handlerdata);
 static void usage (void);
 
@@ -85,7 +87,7 @@ main (int argc, char **argv)
       if ( verbose )
 	fprintf (stderr, "Reading %s\n", flp->data);
       
-      ascii2group (flp->data, mstg);
+      packascii (flp->data);
       
       flp = flp->next;
     }
@@ -168,6 +170,15 @@ packascii (char *infile)
   int dataidx;
   int datacnt;
   
+  char inline[250];
+  char srcname[50];
+  char timestr[50];
+  char listtype[20];
+  char sampletype[20];
+  char unitstr[20];
+  double samplerate;
+  int samplecnt;
+  
   /* Init MSTraceGroup */
   mstg = mst_initgroup (mstg);
   
@@ -179,61 +190,83 @@ packascii (char *infile)
       return -1;
     }
   
-  /* Open output file if needed */
-  if ( ! ofp )
+  while ( fgets (inline, sizeof(inline), ifp) )
     {
-      char mseedoutputfile[1024];
-      int namelen;
-      strncpy (mseedoutputfile, infile, sizeof(mseedoutputfile)-6 );
-      namelen = strlen (infile);
-      
-      /* Truncate file name if .ascii is at the end */
-      if ( namelen > 6 )
-	if ( (*(mseedoutputfile + namelen - 1) == 'a' || *(mseedoutputfile + namelen - 1) == 'A') &&
-             (*(mseedoutputfile + namelen - 2) == 's' || *(mseedoutputfile + namelen - 2) == 'S') &&
-             (*(mseedoutputfile + namelen - 3) == 'c' || *(mseedoutputfile + namelen - 3) == 'C') &&
-             (*(mseedoutputfile + namelen - 4) == 'i' || *(mseedoutputfile + namelen - 4) == 'I') &&
-             (*(mseedoutputfile + namelen - 5) == 'i' || *(mseedoutputfile + namelen - 5) == 'I') &&
-             (*(mseedoutputfile + namelen - 6) == '.') )
+      // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, SLIST, INTEGER, Counts
+      // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, TSPAIR, INTEGER, Counts
+      if ( sscanf (inline, "TIMESERIES %s, %d samples, %lf sps, %s, %s, %s, %s",
+		   srcname, &samplecnt, &samplerate, timestr, listtype, sampletype, unitstr) >= 6 )
+	{
+	  /* (Re)Initialize MSRecord holder */
+	  if ( ! (msr = msr_init(msr)) )
+	    {
+	      fprintf (stderr, "Cannot initialize MSRecord strcture\n");
+	      return -1;
+	    }
 	  
-	  {
-	    *(mseedoutputfile + namelen - 6) = '\0';
-	  }
-      
-      /* Add .mseed to the file name */
-      strcat (mseedoutputfile, ".mseed");
-      
-      if ( (ofp = fopen (mseedoutputfile, "wb")) == NULL )
-        {
-          fprintf (stderr, "Cannot open output file: %s (%s)\n",
-                   mseedoutputfile, strerror(errno));
-          return -1;
-        }
+	  /* Split source name into separate quantities for the MSRecord */
+	  if ( splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->quality)) )
+	    {
+	      fprintf (stderr, "Cannot parse channel source name: %s (improperly specified?)\n", srcname);
+	      return -1;
+	    }
+	  
+	  /* Convert time string to a high-precision time value */
+	  msr->starttime = ms_timestr2hptime (timestr);
+	  if ( msr->starttime == HPTERROR )
+	    {
+	      fprintf (stderr, "Error converting start time: %s\n", timestr);
+	      return -1;
+	    }
+	  
+	  msr->samplecnt = samplecnt;
+	  msr->numsamples = samplecnt;
+	  msr->samplerate = samplerate;
+	  
+	  /* Allocate memory for the data samples */
+	  if ( ! (msr->datasamples = calloc (msr->numsamples, 4)) )
+	    {
+	      fprintf (stderr, "Cannot allocate memory for data samples\n");
+	      return -1;
+	    }
+	  
+	  CHAD, need to parse two different lists into msr->datasamples and set msr->sampletype to i or f
+	  CHAD, implement readslist() and readtspair() used below
+
+	  if ( ! strncmp (listtype, "SLIST", 5) )
+	    {
+	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
+		{
+		  fprintf (stderr, "Error reading samples from file\n");
+		  return -1;
+		}
+	    }
+	  else if ( ! strncmp (listtype, "TSPAIR", 6) )
+	    {
+	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
+		{
+		  fprintf (stderr, "Error reading samples from file\n");
+		  return -1;
+		}
+	    }
+	  else
+	    {
+	      fprintf (stderr, "Unrecognized sample list type: '%s'\n", listtype);
+	      return -1;
+	    }	  
+	  
+	  if ( forcenet )
+	    ms_strncpclean (msr->network, forcenet, 2);
+	  
+	  if ( forceloc )
+	    ms_strncpclean (msr->location, forceloc, 2);
+
+	  
+	  CHAD, add msr to group.
+	  
+	}
     }
   
-  if ( ! (msr = msr_init(msr)) )
-    {
-      fprintf (stderr, "Cannot initialize MSRecord strcture\n");
-      return -1;
-    }
-  
-  CHAD
-
-  /* Allocate space for data samples */
-  *data = (float *) malloc (sizeof(float) * sh->npts);
-  memset (*data, 0, (sizeof(float) * sh->npts));
-
-  /* Populate MSRecord structure with header details */
-  if ( strncmp (SUNDEF, sh.knetwk, 8) ) ms_strncpclean (msr->network, sh.knetwk, 2);
-  if ( strncmp (SUNDEF, sh.kstnm, 8) ) ms_strncpclean (msr->station, sh.kstnm, 5);
-  if ( strncmp (SUNDEF, sh.khole, 8) ) ms_strncpclean (msr->location, sh.khole, 2);
-  if ( strncmp (SUNDEF, sh.kcmpnm, 8) ) ms_strncpclean (msr->channel, sh.kcmpnm, 3);
-  
-  if ( forcenet )
-    ms_strncpclean (msr->network, forcenet, 2);
-  
-  if ( forceloc )
-    ms_strncpclean (msr->location, forceloc, 2);
   
   msr->starttime = ms_time2hptime (sh.nzyear, sh.nzjday, sh.nzhour, sh.nzmin, sh.nzsec, sh.nzmsec * 1000);
   
@@ -901,6 +934,113 @@ addnode (struct listnode **listroot, char *key, char *data)
     lastlp->next = newlp;
   
 }  /* End of addnode() */
+
+
+/***************************************************************************
+ * splitsrcname:
+ *
+ * Split srcname into separate components: "NET_STA_LOC_CHAN_QUAL".
+ * Memory for each component must already be allocated.  If a specific
+ * component is not desired set the appropriate argument to NULL.
+ *
+ * Returns 0 on success and -1 on error.
+ ***************************************************************************/
+static int
+splitsrcname (char *srcname, char *net, char *sta, char *loc, char *chan,
+	      char *qual)
+{
+  char *id;
+  char *ptr, *top, *next;
+  int sepcnt = 0;
+  
+  if ( ! srcname )
+    return -1;
+  
+  /* Verify number of separating underscore characters */
+  id = srcname;
+  while ( (id = strchr (id, '_')) )
+    {
+      id++;
+      sepcnt++;
+    }
+  
+  /* Either 3 or 4 separating underscores are required */
+  if ( sepcnt != 3 && sepcnt != 4 )
+    {
+      return -1;
+    }
+  
+  /* Duplicate srcname */
+  if ( ! (id = strdup(srcname)) )
+    {
+      fprintf (stderr, "splitsrcname(): Error duplicating srcname");
+      return -1;
+    }
+  
+  /* Network */
+  top = id;
+  if ( (ptr = strchr (top, '_')) )
+    {
+      next = ptr + 1;
+      *ptr = '\0';
+      
+      if ( net )
+	strcpy (net, top);
+      
+      top = next;
+    }
+  /* Station */
+  if ( (ptr = strchr (top, '_')) )
+    {
+      next = ptr + 1;
+      *ptr = '\0';
+      
+      if ( sta )
+	strcpy (sta, top);
+      
+      top = next;
+    }
+  /* Location */
+  if ( (ptr = strchr (top, '_')) )
+    {
+      next = ptr + 1;
+      *ptr = '\0';
+      
+      if ( loc )
+	strcpy (loc, top);
+      
+      top = next;
+    }
+  /* Channel & optional Quality */
+  if ( (ptr = strchr (top, '_')) )
+    {
+      next = ptr + 1;
+      *ptr = '\0';
+      
+      if ( chan )
+	strcpy (chan, top);
+      
+      top = next;
+      
+      /* Quality */
+      if ( *top && qual )
+	{
+	  /* Quality is a single character */
+	  *qual = *top;
+	}
+    }
+  /* Otherwise only Channel */
+  else if ( *top && chan )
+    {
+      strcpy (chan, top);
+    }
+  
+  /* Free duplicated stream ID */
+  if ( id )
+    free (id);
+  
+  return 0;
+}  /* End of splitsrcname() */
 
 
 /***************************************************************************
