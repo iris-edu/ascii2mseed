@@ -453,6 +453,7 @@ readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
 static int
 readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double samprate)
 {
+  hptime_t prevtime = HPTERROR;
   char line[1025];
   int linecnt = 1;
   int samplesread = 0;
@@ -462,11 +463,13 @@ readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double sampra
   if ( ! ifp || ! data || ! datacnt )
     return -1;
   
-  /* Each data line should contain 6 samples unless the last */
+  /* Each data line should contain a time-sample pair */
   for (;;)
     {
       if ( ! fgets(line, sizeof(line), ifp) )
 	return linecnt;
+  
+      CHAD, parse time-sample pair, track previous time, check rate
       
       if ( datatype == 'i' )
 	count = sscanf (line, " %d %d %d %d %d %d ", (int32_t *) data + dataidx,
