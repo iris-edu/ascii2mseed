@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2009.322
+ * modified 2009.323
  ***************************************************************************/
 
 #include <stdio.h>
@@ -28,10 +28,8 @@ struct listnode {
 
 static void packtraces (MSTraceGroup *mstg, flag flush);
 static int packascii (char *infile);
-
-static int readalphaheader (FILE *ifp, struct SACHeader *sh);
-static int readalphadata (FILE *ifp, float *data, int datacnt);
-
+static int readslist (FILE *ifp, void *data, char datatype, int32_t datacnt);
+static int readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double samprate);
 static int parameter_proc (int argcount, char **argvec);
 static char *getoptval (int argcount, char **argvec, int argopt);
 static int readlistfile (char *listfile);
@@ -223,6 +221,21 @@ packascii (char *infile)
 	  msr->numsamples = samplecnt;
 	  msr->samplerate = samplerate;
 	  
+	  /* Determine sample type */
+	  if ( ! strncmp (sampletype, "INTEGER", 7) )
+	    {
+	      msr->sampletype = 'i';
+	    }
+	  else if ( ! strncmp (sampletype, "FLOAT", 5) )
+	    {
+	      msr->sampletype = 'f';
+	    }
+	  else
+	    {
+	      fprintf (stderr, "Unrecognized data sample type: '%s'\n", sampletype);
+	      return -1;
+	    }
+	  
 	  /* Allocate memory for the data samples */
 	  if ( ! (msr->datasamples = calloc (msr->numsamples, 4)) )
 	    {
@@ -230,9 +243,9 @@ packascii (char *infile)
 	      return -1;
 	    }
 	  
-	  CHAD, need to parse two different lists into msr->datasamples and set msr->sampletype to i or f
+	  CHAD, need to parse two different lists into msr->datasamples
 	  CHAD, implement readslist() and readtspair() used below
-
+	  
 	  if ( ! strncmp (listtype, "SLIST", 5) )
 	    {
 	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
@@ -243,7 +256,7 @@ packascii (char *infile)
 	    }
 	  else if ( ! strncmp (listtype, "TSPAIR", 6) )
 	    {
-	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
+	      if ( readtspair (ifp, msr->datasamples, msr->sampletype, msr->numsamples, msr->samprate) )
 		{
 		  fprintf (stderr, "Error reading samples from file\n");
 		  return -1;
@@ -260,7 +273,6 @@ packascii (char *infile)
 	  
 	  if ( forceloc )
 	    ms_strncpclean (msr->location, forceloc, 2);
-
 	  
 	  CHAD, add msr to group.
 	  
@@ -364,280 +376,122 @@ packascii (char *infile)
 
 
 /***************************************************************************
- * parsesac:
- *
- * Parse a SAC file, autodetecting format dialect (ALPHA,
- * binary, big or little endian).  Results will be placed in the
- * supplied SAC header struct and data (float sample array in host
- * byte order).  The data array will be allocated by this routine and
- * must be free'd by the caller.  The data array will contain the
- * number of samples indicated in the SAC header (sh->npts).
- *
- * The format argument is interpreted as:
- * 0 : Unknown, detection needed
- * 1 : ALPHA
- * 2 : Binary, byte order detection needed
- * 3 : Binary, little endian
- * 4 : Binary, big endian
- *
- * Returns number of data samples in file or -1 on failure.
- ***************************************************************************/
-static int
-parsesac (FILE *ifp, struct SACHeader *sh, float **data, int format,
-	  int verbose, char *sacfile)
-{
-  char fourc[4];
-  int swapflag = 0;
-  int rv;
-  
-  /* Argument sanity */
-  if ( ! ifp || ! sh || ! data )
-    return -1;
-  
-  /* Read the first 4 characters */
-  if ( fread (&fourc, 4, 1, ifp) < 1 )
-    return -1;
-  
-  /* Determine if the file is ALPHA or binary SAC,
-   * if the first 4 characters are spaces assume ALPHA SAC */
-  if ( format == 0 )
-    {
-      if ( fourc[0] == ' ' && fourc[1] == ' ' && fourc[2] == ' ' && fourc[3] == ' ' )
-	format = 1;
-      else
-	format = 2;  /* Byte order detection will occur below */
-    }
-  
-  /* Rewind the file position pointer to the beginning */
-  rewind (ifp);
-  
-  
-  
-  if ( verbose )
-    {
-      if ( format == 1 )
-	fprintf (stderr, "[%s] Reading SAC ALPHA format\n", sacfile);
-      if ( format == 3 )
-	fprintf (stderr, "[%s] Reading SAC binary format (little-endian)\n", sacfile);
-      if ( format == 4 )
-	fprintf (stderr, "[%s] Reading SAC binary format (big-endian)\n", sacfile);
-    }
-  
-  if ( verbose > 2 )
-    fprintf (stderr, "[%s] SAC header version number: %d\n", sacfile, sh->nvhdr);
-  
-  if ( sh->nvhdr != 6 )
-    fprintf (stderr, "[%s] WARNING SAC header version (%d) not expected value of 6\n",
-	     sacfile, sh->nvhdr);
-  
-  if ( sh->npts <= 0 )
-    {
-      fprintf (stderr, "[%s] No data, number of samples: %d\n", sacfile, sh->npts);
-      return -1;
-    }
-  
-  if ( sh->iftype != ITIME )
-    {
-      fprintf (stderr, "[%s] Data is not time series (IFTYPE=%d), cannot convert other types\n",
-	       sacfile, sh->iftype);
-      return -1;
-    }
-  
-  if ( ! sh->leven )
-    {
-      fprintf (stderr, "[%s] Data is not evenly spaced (LEVEN not true), cannot convert\n", sacfile);
-      return -1;
-    }
-  
-
-  
-  /* Read the data samples */
-  if ( format == 1 )  /* Process SAC ALPHA data */
-    {
-      if ( (rv = readalphadata (ifp, *data, sh->npts)) )
-	{
-	  fprintf (stderr, "[%s] Error parsing SAC ALPHA data at line %d\n",
-		   sacfile, rv);
-	  return -1;
-	}
-    }
-  else if ( format >= 2 && format <= 4 ) /* Process SAC binary data */
-    {
-      if ( readbinarydata (ifp, *data, sh->npts, swapflag, verbose, sacfile) )
-	{
-	  fprintf (stderr, "[%s] Error reading SAC data samples\n", sacfile);
-	  return -1;
-	}
-    }
-  else
-    {
-      fprintf (stderr, "[%s] Unrecognized format value: %d\n", sacfile, format);
-      return -1;
-    }      
-  
-  return sh->npts;
-}  /* End of parsesac() */
-
-
-/***************************************************************************
- * readalphaheader:
- *
- * Read a alphanumeric header from a file and parse into a SAC header
- * struct.
- *
- * Returns 0 on sucess or a positive number indicating line number of
- * parsing failure.
- ***************************************************************************/
-static int
-readalphaheader (FILE *ifp, struct SACHeader *sh)
-{
-  char line[1025];
-  int linecnt = 1;  /* The header starts at line 1 */
-  int lineidx;
-  int count;
-  int hvidx = 0;
-  char *cp;
-  
-  if ( ! ifp || ! sh )
-    return -1;
-  
-  /* The first 14 lines x 5 values are floats */
-  for (lineidx=0; lineidx < 14; lineidx++)
-    {
-      if ( ! fgets(line, sizeof(line), ifp) )
-	return linecnt;
-      
-      count = sscanf (line, " %f %f %f %f %f ", (float *) sh + hvidx,
-		      (float *) sh + hvidx + 1, (float *) sh + hvidx + 2,
-		      (float *) sh + hvidx + 3, (float *) sh + hvidx + 4);
-      
-      if ( count != 5 )
-	return linecnt;
-      
-      hvidx += 5;
-      linecnt++;
-    }
-  
-  /* The next 8 lines x 5 values are integers */
-  for (lineidx=0; lineidx < 8; lineidx++)
-    {
-      if ( ! fgets(line, sizeof(line), ifp) )
-	return linecnt;
-      
-      count = sscanf (line, " %d %d %d %d %d ", (int32_t *) sh + hvidx,
-		      (int32_t *) sh + hvidx + 1, (int32_t *) sh + hvidx + 2,
-		      (int32_t *) sh + hvidx + 3, (int32_t *) sh + hvidx + 4);
-      
-      if ( count != 5 )
-	return linecnt;
-      
-      hvidx += 5;
-      linecnt++;
-    }
-  
-  /* Set pointer to start of string variables */
-  cp =  (char *) sh + (hvidx * 4);
-  
-  /* The next 8 lines each contain 24 bytes of string data */
-  for (lineidx=0; lineidx < 8; lineidx++)
-    {
-      memset (line, 0, sizeof(line));
-      if ( ! fgets(line, sizeof(line), ifp) )
-	return linecnt;
-      
-      memcpy (cp, line, 24);
-      cp += 24;
-      
-      linecnt++;
-    }
-  
-  /* Make sure each of the 23 string variables are left justified */
-  cp =  (char *) sh + (hvidx * 4);  
-  for (count=0; count < 24; count++)
-    {
-      int ridx, widx, width;
-      char *fcp;
-      
-      /* Each string variable is 8 characters with one exception */
-      if ( count != 1 )
-	{
-	  width = 8;
-	}
-      else
-	{
-	  width = 16;
-	  count++;
-	}
-      
-      /* Pointer to field */
-      fcp = cp + (count * 8);
-
-      /* Find first character that is not a space */
-      ridx = 0;
-      while ( *(fcp + ridx) == ' ' )
-	ridx++;
-      
-      /* Remove any leading spaces */
-      if ( ridx > 0 )
-	{
-	  for (widx=0; widx < width; widx++, ridx++)
-	    {
-	      if ( ridx < width )
-		*(fcp + widx) = *(fcp + ridx);
-	      else
-		*(fcp + widx) = ' ';
-	    }
-	}
-    }
-  
-  return 0;
-}  /* End of readalphaheader() */
-
-
-/***************************************************************************
- * readalphadata:
+ * readslist:
  *
  * Read a alphanumeric data from a file and add to an array, the array
  * must already be allocated with datacnt floats.
  *
+ * The data must be organized in 6 columns.  32-bit integer and floats
+ * are parsed according to the 'datatype' argument ('i' or 'f').
+ *
  * Returns 0 on sucess or a positive number indicating line number of
  * parsing failure.
  ***************************************************************************/
 static int
-readalphadata (FILE *ifp, float *data, int datacnt)
+readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
 {
   char line[1025];
-  int linecnt = 31; /* Data samples start on line 31 */
+  int linecnt = 1;
   int samplesread = 0;
   int count;
   int dataidx = 0;
   
-  if ( ! ifp || ! data || ! datacnt)
+  if ( ! ifp || ! data || ! datacnt )
     return -1;
   
-  /* Each data line should contain 5 floats unless the last */
+  /* Each data line should contain 6 samples unless the last */
   for (;;)
     {
       if ( ! fgets(line, sizeof(line), ifp) )
 	return linecnt;
       
-      count = sscanf (line, " %f %f %f %f %f ", (float *) data + dataidx,
-		      (float *) data + dataidx + 1, (float *) data + dataidx + 2,
-		      (float *) data + dataidx + 3, (float *) data + dataidx + 4);
+      if ( datatype == 'i' )
+	count = sscanf (line, " %d %d %d %d %d %d ", (int32_t *) data + dataidx,
+			(int32_t *) data + dataidx + 1, (int32_t *) data + dataidx + 2,
+			(int32_t *) data + dataidx + 3, (int32_t *) data + dataidx + 4,
+			(int32_t *) data + dataidx + 5);
+      else if ( datatype == 'f' )
+	count = sscanf (line, " %f %f %f %f %f %f ", (float *) data + dataidx,
+			(float *) data + dataidx + 1, (float *) data + dataidx + 2,
+			(float *) data + dataidx + 3, (float *) data + dataidx + 4,
+			(float *) data + dataidx + 5);
       
       samplesread += count;
       
       if ( samplesread >= datacnt )
 	break;
-      else if ( count != 5 )
+      else if ( count != 6 )
 	return linecnt;
       
-      dataidx += 5;
+      dataidx += 6;
       linecnt++;
     }
   
   return 0;
-}  /* End of readalphadata() */
+}  /* End of readslist() */
+
+
+/***************************************************************************
+ * readtspair:
+ *
+ * Read a alphanumeric data from a file and add to an array, the array
+ * must already be allocated with datacnt floats.
+ *
+ * The data must be organized in 2 column, time-sample pairs.  32-bit
+ * integer and floats are parsed according to the 'datatype' argument
+ * ('i' or 'f').
+ *
+ * Example data line:
+ * "2008-01-15T00:00:08.975000  678.145"
+ *
+ * The data is checked to be evenly spaced and to match the supplied
+ * sample rate.
+ *
+ * Returns 0 on sucess or a positive number indicating line number of
+ * parsing failure.
+ ***************************************************************************/
+static int
+readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double samprate)
+{
+  char line[1025];
+  int linecnt = 1;
+  int samplesread = 0;
+  int count;
+  int dataidx = 0;
+  
+  if ( ! ifp || ! data || ! datacnt )
+    return -1;
+  
+  /* Each data line should contain 6 samples unless the last */
+  for (;;)
+    {
+      if ( ! fgets(line, sizeof(line), ifp) )
+	return linecnt;
+      
+      if ( datatype == 'i' )
+	count = sscanf (line, " %d %d %d %d %d %d ", (int32_t *) data + dataidx,
+			(int32_t *) data + dataidx + 1, (int32_t *) data + dataidx + 2,
+			(int32_t *) data + dataidx + 3, (int32_t *) data + dataidx + 4,
+			(int32_t *) data + dataidx + 5);
+      else if ( datatype == 'f' )
+	count = sscanf (line, " %f %f %f %f %f %f ", (float *) data + dataidx,
+			(float *) data + dataidx + 1, (float *) data + dataidx + 2,
+			(float *) data + dataidx + 3, (float *) data + dataidx + 4,
+			(float *) data + dataidx + 5);
+      
+      samplesread += count;
+      
+      if ( samplesread >= datacnt )
+	break;
+      else if ( count != 6 )
+	return linecnt;
+      
+      dataidx += 6;
+      linecnt++;
+    }
+  
+  return 0;
+}  /* End of readtspair() */
 
 
 /***************************************************************************

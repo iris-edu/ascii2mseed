@@ -1,4 +1,4 @@
-TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, SLIST, INTEGER, Counts
+TIMESERIES XX_TEST__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, SLIST, INTEGER, Counts
        185         181         185         189         194         205  
        209         214         222         225         226         219  
        216         219         210         208         213         207  
