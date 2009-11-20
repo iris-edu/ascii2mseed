@@ -242,10 +242,7 @@ packascii (char *infile)
 	      fprintf (stderr, "Cannot allocate memory for data samples\n");
 	      return -1;
 	    }
-	  
-	  CHAD, need to parse two different lists into msr->datasamples
-	  CHAD, implement readslist() and readtspair() used below
-	  
+	  	  
 	  if ( ! strncmp (listtype, "SLIST", 5) )
 	    {
 	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
@@ -453,8 +450,10 @@ readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
 static int
 readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double samprate)
 {
+  hptime_t samptime = HPTERROR;
   hptime_t prevtime = HPTERROR;
   char line[1025];
+  char stime[50];
   int linecnt = 1;
   int samplesread = 0;
   int count;
@@ -468,28 +467,46 @@ readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double sampra
     {
       if ( ! fgets(line, sizeof(line), ifp) )
 	return linecnt;
-  
-      CHAD, parse time-sample pair, track previous time, check rate
       
       if ( datatype == 'i' )
-	count = sscanf (line, " %d %d %d %d %d %d ", (int32_t *) data + dataidx,
-			(int32_t *) data + dataidx + 1, (int32_t *) data + dataidx + 2,
-			(int32_t *) data + dataidx + 3, (int32_t *) data + dataidx + 4,
-			(int32_t *) data + dataidx + 5);
+	count = sscanf (line, " %s %d ", stime, (int32_t *) data + dataidx);
       else if ( datatype == 'f' )
-	count = sscanf (line, " %f %f %f %f %f %f ", (float *) data + dataidx,
-			(float *) data + dataidx + 1, (float *) data + dataidx + 2,
-			(float *) data + dataidx + 3, (float *) data + dataidx + 4,
-			(float *) data + dataidx + 5);
+	count = sscanf (line, " %s %f ", stime, (float *) data + dataidx);
       
-      samplesread += count;
+      if ( count == 2 )
+	{
+	  /* Convert sample time to high-precision time value */
+	  if ( (samptime = ms_timestr2hptime (stime)) == HPTERROR )
+	    {
+	      fprintf (stderr, "Error converting sample time stamp: '%s'\n", stime);
+	      return linecnt;
+	    }
+	  
+	  /* Check sample spacing */
+	  if ( prevtime != HTPERROR )
+	    {
+	      double srate = HPTMODULUS / (samptime - prevtime);
+	      
+	      if ( ! MS_ISRATETOLERABLE (samprate, srate) )
+		{
+		  fprintf (stderr, "Data samples are not evenly sampled starting at sample %d\n", linecnt);
+		  return linecnt;
+		}
+	    }
+	  
+	  prevtime = samptime;
+	  
+	  samplesread += 1;
+	  
+	  if ( samplesread >= datacnt )
+	    break;
+	}
+      else
+	{
+	  return linecnt;
+	}
       
-      if ( samplesread >= datacnt )
-	break;
-      else if ( count != 6 )
-	return linecnt;
-      
-      dataidx += 6;
+      dataidx += 1;
       linecnt++;
     }
   
