@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2009.324
+ * modified 2009.325
  ***************************************************************************/
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "0.1"
+#define VERSION "0.2"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
@@ -334,7 +334,7 @@ packascii (char *infile)
  * Read a alphanumeric data from a file and add to an array, the array
  * must already be allocated with datacnt floats.
  *
- * The data must be organized in 6 columns.  32-bit integer and floats
+ * The data must be organized in 1-8 columns.  32-bit integer and floats
  * are parsed according to the 'datatype' argument ('i' or 'f').
  *
  * Returns 0 on sucess or a positive number indicating line number of
@@ -352,31 +352,33 @@ readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
   if ( ! ifp || ! data || ! datacnt )
     return -1;
   
-  /* Each data line should contain 6 samples unless the last */
+  /* Each data line should contain 1-8 samples */
   for (;;)
     {
       if ( ! fgets(line, sizeof(line), ifp) )
 	return linecnt;
       
       if ( datatype == 'i' )
-	count = sscanf (line, " %d %d %d %d %d %d ", (int32_t *) data + dataidx,
+	count = sscanf (line, " %d %d %d %d %d %d %d %d ", (int32_t *) data + dataidx,
 			(int32_t *) data + dataidx + 1, (int32_t *) data + dataidx + 2,
 			(int32_t *) data + dataidx + 3, (int32_t *) data + dataidx + 4,
-			(int32_t *) data + dataidx + 5);
+			(int32_t *) data + dataidx + 5, (int32_t *) data + dataidx + 6,
+			(int32_t *) data + dataidx + 7);
       else if ( datatype == 'f' )
-	count = sscanf (line, " %f %f %f %f %f %f ", (float *) data + dataidx,
+	count = sscanf (line, " %f %f %f %f %f %f %f %f ", (float *) data + dataidx,
 			(float *) data + dataidx + 1, (float *) data + dataidx + 2,
 			(float *) data + dataidx + 3, (float *) data + dataidx + 4,
-			(float *) data + dataidx + 5);
+			(float *) data + dataidx + 5, (float *) data + dataidx + 6,
+			(float *) data + dataidx + 7);
       
       samplesread += count;
       
       if ( samplesread >= datacnt )
 	break;
-      else if ( count != 6 )
+      else if ( count < 1 || count > 8 )
 	return linecnt;
       
-      dataidx += 6;
+      dataidx += count;
       linecnt++;
     }
   

@@ -1,4 +1,4 @@
-.TH ASCII2MSEED 1 2009/11/20
+.TH ASCII2MSEED 1 2009/11/21
 .SH NAME
 ASCII time series to Mini-SEED converter
 
@@ -67,6 +67,69 @@ An example of a simple text list:
 .nf
 tspair.ascii
 slist.ascii
+.fi
+
+.SH ASCII DATA
+The input ASCII data are expected to start with a simple header
+followed by data samples in one of two forms: a columnar sample value
+listing or time-sample pairs.  The header identifies the time series
+source parameters (SEED convention) along with number of samples,
+sample rate, time of first sample, sample list format, sample type and
+optionally the units of the samples.
+
+Header lines are of the general form:
+
+.nf
+"TIMESERIES SourceName, # samples, # sps, Time, Format, Type, Units"
+.fi
+
+Header field descriptions:
+
+.nf
+\fBSourceName\fP: "Net_Sta_Loc_Chan_Qual", no spaces, quality code optional
+\fB# samples\fP:  Number of samples following header
+\fB# sps\fP:      Sampling rate in samples per second
+\fBTime\fP:       Time of first sample in ISO YYYY-MM-DDTHH:MM:SS.FFFFFF format
+\fBFormat\fP:     'SLIST' (sample list) or 'TSPAIR' (time-sample pair)
+\fBType\fP:       Sample type 'INTEGER' or 'FLOAT'
+\fBUnits\fP:      Units of time-series (will not be present in Mini-SEED)
+.fi
+
+The header line should not be wrapped and must contain the spaces and
+commas as specified in the general form.  The units field of the
+header is optional and will not be used by ascii2mseed (there is no
+place for units in Mini-SEED).  No blanks lines should exist between
+the header and data samples.
+
+The \fBSourceName\fP field identifies the source of the time series
+data using the SEED name nomenclature separated by underscores.  The
+data quality code is optional and defaults to 'D'.  Spaces in the
+source name field are not supported.
+
+\fBExample data file using SLIST (sample list) format\fP
+
+.nf
+TIMESERIES XX_TEST__BHZ, 12 samples, 40 sps, 2003-05-29T02:13:22.043400, SLIST, INTEGER, Counts
+      2787        2776        2774        2780        2783        2782
+      2776        2766        2759        2760        2765        2767
+.fi
+
+\fBExample data file using TSPAIR (time-sample pair) format\fP
+
+.nf
+TIMESERIES XX_TEST__BHZ, 12 samples, 40 sps, 2003-05-29T02:13:22.043400, TSPAIR, INTEGER, Counts
+2003-05-29T02:13:22.043400  2787
+2003-05-29T02:13:22.068400  2776
+2003-05-29T02:13:22.093400  2774
+2003-05-29T02:13:22.118400  2780
+2003-05-29T02:13:22.143400  2783
+2003-05-29T02:13:22.168400  2782
+2003-05-29T02:13:22.193400  2776
+2003-05-29T02:13:22.218400  2766
+2003-05-29T02:13:22.243400  2759
+2003-05-29T02:13:22.268400  2760
+2003-05-29T02:13:22.293400  2765
+2003-05-29T02:13:22.318400  2767
 .fi
 
 .SH AUTHOR
