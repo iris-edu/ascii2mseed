@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2009.323
+ * modified 2009.324
  ***************************************************************************/
 
 #include <stdio.h>
@@ -97,9 +97,6 @@ main (int argc, char **argv)
   if ( ofp )
     fclose (ofp);
   
-  if ( mfp )
-    fclose (mfp);
-  
   return 0;
 }  /* End of main() */
 
@@ -162,13 +159,9 @@ packascii (char *infile)
   struct blkt_1000_s Blkt1000;
   struct blkt_1001_s Blkt1001;
   struct blkt_100_s Blkt100;
+  int fields;
   
-  float *fdata = 0;
-  int32_t *idata = 0;
-  int dataidx;
-  int datacnt;
-  
-  char inline[250];
+  char rdline[250];
   char srcname[50];
   char timestr[50];
   char listtype[20];
@@ -188,12 +181,15 @@ packascii (char *infile)
       return -1;
     }
   
-  while ( fgets (inline, sizeof(inline), ifp) )
+  while ( fgets (rdline, sizeof(rdline), ifp) )
     {
       // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, SLIST, INTEGER, Counts
       // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, TSPAIR, INTEGER, Counts
-      if ( sscanf (inline, "TIMESERIES %s, %d samples, %lf sps, %s, %s, %s, %s",
-		   srcname, &samplecnt, &samplerate, timestr, listtype, sampletype, unitstr) >= 6 )
+      
+      fields = sscanf (rdline, "TIMESERIES %[^,], %d samples, %lf sps, %[^,], %[^,], %[^,], %s",
+		       srcname, &samplecnt, &samplerate, timestr, listtype, sampletype, unitstr);
+      
+      if ( fields >= 6 )
 	{
 	  /* (Re)Initialize MSRecord holder */
 	  if ( ! (msr = msr_init(msr)) )
@@ -203,7 +199,7 @@ packascii (char *infile)
 	    }
 	  
 	  /* Split source name into separate quantities for the MSRecord */
-	  if ( splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->quality)) )
+	  if ( splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->dataquality)) )
 	    {
 	      fprintf (stderr, "Cannot parse channel source name: %s (improperly specified?)\n", srcname);
 	      return -1;
@@ -219,16 +215,17 @@ packascii (char *infile)
 	  
 	  msr->samplecnt = samplecnt;
 	  msr->numsamples = samplecnt;
-	  msr->samplerate = samplerate;
+	  msr->samprate = samplerate;
 	  
 	  /* Determine sample type */
-	  if ( ! strncmp (sampletype, "INTEGER", 7) )
+	  if ( ! strncasecmp (sampletype, "INTEGER", 7) )
 	    {
 	      msr->sampletype = 'i';
 	    }
-	  else if ( ! strncmp (sampletype, "FLOAT", 5) )
+	  else if ( ! strncasecmp (sampletype, "FLOAT", 5) )
 	    {
 	      msr->sampletype = 'f';
+	      encoding = 4;
 	    }
 	  else
 	    {
@@ -242,7 +239,7 @@ packascii (char *infile)
 	      fprintf (stderr, "Cannot allocate memory for data samples\n");
 	      return -1;
 	    }
-	  	  
+	  
 	  if ( ! strncmp (listtype, "SLIST", 5) )
 	    {
 	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
@@ -265,108 +262,67 @@ packascii (char *infile)
 	      return -1;
 	    }	  
 	  
+	  /*
 	  if ( forcenet )
 	    ms_strncpclean (msr->network, forcenet, 2);
 	  
 	  if ( forceloc )
 	    ms_strncpclean (msr->location, forceloc, 2);
+	  */
 	  
-	  CHAD, add msr to group.
+	  if ( verbose >= 1 )
+	    {
+	      fprintf (stderr, "[%s] %d samps @ %.6f Hz for N: '%s', S: '%s', L: '%s', C: '%s'\n",
+		       infile, msr->numsamples, msr->samprate,
+		       msr->network, msr->station,  msr->location, msr->channel);
+	    }
 	  
-	}
-    }
-  
-  
-  msr->starttime = ms_time2hptime (sh.nzyear, sh.nzjday, sh.nzhour, sh.nzmin, sh.nzsec, sh.nzmsec * 1000);
-  
-  /* Calculate sample rate from interval(period) rounding to nearest 0.000001 Hz */
-  msr->samprate = (double) ((int)((1 / sh.delta) * 100000 + 0.5)) / 100000;
-  
-  msr->samplecnt = msr->numsamples = datacnt;
-  
-  /* Data sample type and sample array */
-  if ( encoding == 4 )
-    {
-      msr->sampletype = 'f';
-      msr->datasamples = fdata;
-    }
-  else
-    {
-      /* Create an array of scaled integers */
-      idata = (int32_t *) malloc (datacnt * sizeof(int32_t));
-      
-      if ( verbose )
-	fprintf (stderr, "[%s] Creating integer data scaled by: %lld\n", infile, scaling);
-      
-      for ( dataidx=0; dataidx < datacnt; dataidx++ )
-	*(idata + dataidx) = (int32_t) (*(fdata + dataidx) * scaling);
-      
-      msr->sampletype = 'i';
-      msr->datasamples = idata;
-    }
-  
-  if ( verbose >= 1 )
-    {
-      fprintf (stderr, "[%s] %d samps @ %.6f Hz for N: '%s', S: '%s', L: '%s', C: '%s'\n",
-	       infile, msr->numsamples, msr->samprate,
-	       msr->network, msr->station,  msr->location, msr->channel);
-    }
-  
-  if ( ! (mst = mst_addmsrtogroup (mstg, msr, 0, -1.0, -1.0)) )
-    {
-      fprintf (stderr, "[%s] Error adding samples to MSTraceGroup\n", infile);
-    }
-  
-  /* Create an MSRecord template for the MSTrace by copying the current holder */
-  if ( ! mst->prvtptr )
-    {
-      mst->prvtptr = msr_duplicate (msr, 0);
-      
-      if ( ! mst->prvtptr )
-	{
-	  fprintf (stderr, "[%s] Error duplicate MSRecord for template\n", infile);
-	  return -1;
-	}
-      
-      /* Add blockettes 1000 & 1001 to template */
-      memset (&Blkt1000, 0, sizeof(struct blkt_1000_s));
-      msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt1000,
-			sizeof(struct blkt_1001_s), 1000, 0);
-      memset (&Blkt1001, 0, sizeof(struct blkt_1001_s));
-      msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt1001,
-			sizeof(struct blkt_1001_s), 1001, 0);
-      
-      /* Add blockette 100 to template if requested */
-      if ( srateblkt )
-	{
-	  memset (&Blkt100, 0, sizeof(struct blkt_100_s));
-	  Blkt100.samprate = (float) msr->samprate;
-	  msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt100,
-			    sizeof(struct blkt_100_s), 100, 0);
-	}
-    }
+	  if ( ! (mst = mst_addmsrtogroup (mstg, msr, 0, -1.0, -1.0)) )
+	    {
+	      fprintf (stderr, "[%s] Error adding samples to MSTraceGroup\n", infile);
+	    }
+	  
+	  /* Create an MSRecord template for the MSTrace by copying the current holder */
+	  if ( ! mst->prvtptr )
+	    {
+	      mst->prvtptr = msr_duplicate (msr, 0);
+	      
+	      if ( ! mst->prvtptr )
+		{
+		  fprintf (stderr, "[%s] Error duplicate MSRecord for template\n", infile);
+		  return -1;
+		}
+	      
+	      /* Add blockettes 1000 & 1001 to template */
+	      memset (&Blkt1000, 0, sizeof(struct blkt_1000_s));
+	      msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt1000,
+				sizeof(struct blkt_1001_s), 1000, 0);
+	      memset (&Blkt1001, 0, sizeof(struct blkt_1001_s));
+	      msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt1001,
+				sizeof(struct blkt_1001_s), 1001, 0);
+	      
+	      /* Add blockette 100 to template if requested */
+	      if ( srateblkt )
+		{
+		  memset (&Blkt100, 0, sizeof(struct blkt_100_s));
+		  Blkt100.samprate = (float) msr->samprate;
+		  msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt100,
+				    sizeof(struct blkt_100_s), 100, 0);
+		}
+	    } /* End of creating template MSRecord */
+	} /* End of TIMESERIES line detection loop */
+    } /* End of reading lines from input file */
   
   packtraces (mstg, 1);
   packedtraces += mstg->numtraces;
   
   fclose (ifp);
   
-  if ( ofp  && ! outputfile )
-    {
-      fclose (ofp);
-      ofp = 0;
-    }
-  
-  if ( fdata )
-    free (fdata);
-  
-  if ( idata )
-    free (idata);
-  
-  msr->datasamples = 0;
-  
   if ( msr )
-    msr_free (&msr);
+    {
+      msr->datasamples = 0;
+      msr_free (&msr);
+    }
   
   return 0;
 }  /* End of packascii() */
@@ -390,7 +346,7 @@ readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
   char line[1025];
   int linecnt = 1;
   int samplesread = 0;
-  int count;
+  int count = 0;
   int dataidx = 0;
   
   if ( ! ifp || ! data || ! datacnt )
@@ -456,7 +412,7 @@ readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double sampra
   char stime[50];
   int linecnt = 1;
   int samplesread = 0;
-  int count;
+  int count = 0;
   int dataidx = 0;
   
   if ( ! ifp || ! data || ! datacnt )
@@ -483,7 +439,7 @@ readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double sampra
 	    }
 	  
 	  /* Check sample spacing */
-	  if ( prevtime != HTPERROR )
+	  if ( prevtime != HPTERROR )
 	    {
 	      double srate = HPTMODULUS / (samptime - prevtime);
 	      
@@ -586,7 +542,11 @@ parameter_proc (int argcount, char **argvec)
   /* Report the program version */
   if ( verbose )
     fprintf (stderr, "%s version: %s\n", PACKAGE, VERSION);
-
+  
+  /* Check for an output file */
+  if ( ! outputfile )
+    fprintf (stderr, "WARNING: no output file specified\n");    
+  
   /* Check the input files for any list files, if any are found
    * remove them from the list and add the contained list */
   if ( filelist )
@@ -813,7 +773,7 @@ addnode (struct listnode **listroot, char *key, char *data)
 /***************************************************************************
  * splitsrcname:
  *
- * Split srcname into separate components: "NET_STA_LOC_CHAN_QUAL".
+ * Split srcname into separate components: "NET_STA_LOC_CHAN[_QUAL]".
  * Memory for each component must already be allocated.  If a specific
  * component is not desired set the appropriate argument to NULL.
  *
@@ -924,9 +884,12 @@ splitsrcname (char *srcname, char *net, char *sta, char *loc, char *chan,
 static void
 record_handler (char *record, int reclen, void *handlerdata)
 {
-  if ( fwrite(record, reclen, 1, ofp) != 1 )
+  if ( ofp )
     {
-      fprintf (stderr, "Error writing to output file\n");
+      if ( fwrite(record, reclen, 1, ofp) != 1 )
+	{
+	  fprintf (stderr, "Error writing to output file\n");
+	}
     }
 }  /* End of record_handler() */
 
@@ -939,7 +902,7 @@ static void
 usage (void)
 {
   fprintf (stderr, "%s version: %s\n\n", PACKAGE, VERSION);
-  fprintf (stderr, "Convert SAC waveform data to Mini-SEED.\n\n");
+  fprintf (stderr, "Convert ASCII time-series data to Mini-SEED.\n\n");
   fprintf (stderr, "Usage: %s [options] file1 [file2 file3 ...]\n\n", PACKAGE);
   fprintf (stderr,
 	   " ## Options ##\n"
@@ -958,7 +921,7 @@ usage (void)
 	   "\n"
 	   "Supported Mini-SEED encoding formats:\n"
            " 3  : 32-bit integers\n"
-           " 4  : 32-bit floats (C float)\n"
+           " 4  : 32-bit floats, required for float input samples\n"
            " 10 : Steim 1 compression of 32-bit integers\n"
            " 11 : Steim 2 compression of 32-bit integers\n"
 	   "\n");
