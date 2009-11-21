@@ -27,6 +27,7 @@ struct listnode {
 };
 
 static void packtraces (MSTraceGroup *mstg, flag flush);
+static void freetraces (MSTraceGroup *mstg);
 static int packascii (char *infile);
 static int readslist (FILE *ifp, void *data, char datatype, int32_t datacnt);
 static int readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double samprate);
@@ -140,6 +141,37 @@ packtraces (MSTraceGroup *mstg, flag flush)
       mst = mst->next;
     }
 }  /* End of packtraces() */
+
+
+/***************************************************************************
+ * freetraces:
+ *
+ * Free all traces in a group including per-MSTrace templates.
+ *
+ * Returns 0 on success, and -1 on failure
+ ***************************************************************************/
+static void
+freetraces (MSTraceGroup *mstg)
+{
+  MSTrace *mst;
+  MSRecord *msr;
+  
+  /* Free MSRecord structures at mst->prvtptr */
+  mst = mstg->traces;
+  while ( mst )
+    {
+      if ( mst->prvtptr )
+	{
+	  msr = (MSRecord *)mst->prvtptr;
+	  msr_free (&msr);
+	  mst->prvtptr = 0;
+	}
+      
+      mst = mst->next;
+    }
+  
+  mst_freegroup (&mstg);
+}  /* End of freetraces() */
 
 
 /***************************************************************************
@@ -319,10 +351,10 @@ packascii (char *infile)
   fclose (ifp);
   
   if ( msr )
-    {
-      msr->datasamples = 0;
-      msr_free (&msr);
-    }
+    msr_free (&msr);
+  
+  if ( mstg )
+    freetraces (mstg);
   
   return 0;
 }  /* End of packascii() */

@@ -2,6 +2,7 @@
 	- Allow sample list data values to be in 1 to 8 columns instead
 	of a fixed 6 columns.
 	- Add details of expected input data files to man page.
+	- Fix memory leaks.
 
 2009.324: 0.1
 	- Initial version.
