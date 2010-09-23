@@ -1,3 +1,7 @@
+2010.266: 1.0
+	- Update libmseed to 2.5.1 release.
+	- Mark as 1.0.
+
 2009.325: 0.2
 	- Allow sample list data values to be in 1 to 8 columns instead
 	of a fixed 6 columns.
