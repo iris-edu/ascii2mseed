@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2009.325
+ * modified 2010.266
  ***************************************************************************/
 
 #include <stdio.h>
@@ -35,8 +35,6 @@ static int parameter_proc (int argcount, char **argvec);
 static char *getoptval (int argcount, char **argvec, int argopt);
 static int readlistfile (char *listfile);
 static void addnode (struct listnode **listroot, char *key, char *data);
-static int splitsrcname (char *srcname, char *net, char *sta, char *loc, char *chan,
-			 char *qual);
 static void record_handler (char *record, int reclen, void *handlerdata);
 static void usage (void);
 
@@ -231,7 +229,7 @@ packascii (char *infile)
 	    }
 	  
 	  /* Split source name into separate quantities for the MSRecord */
-	  if ( splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->dataquality)) )
+	  if ( ms_splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->dataquality)) )
 	    {
 	      fprintf (stderr, "Cannot parse channel source name: %s (improperly specified?)\n", srcname);
 	      return -1;
@@ -802,113 +800,6 @@ addnode (struct listnode **listroot, char *key, char *data)
     lastlp->next = newlp;
   
 }  /* End of addnode() */
-
-
-/***************************************************************************
- * splitsrcname:
- *
- * Split srcname into separate components: "NET_STA_LOC_CHAN[_QUAL]".
- * Memory for each component must already be allocated.  If a specific
- * component is not desired set the appropriate argument to NULL.
- *
- * Returns 0 on success and -1 on error.
- ***************************************************************************/
-static int
-splitsrcname (char *srcname, char *net, char *sta, char *loc, char *chan,
-	      char *qual)
-{
-  char *id;
-  char *ptr, *top, *next;
-  int sepcnt = 0;
-  
-  if ( ! srcname )
-    return -1;
-  
-  /* Verify number of separating underscore characters */
-  id = srcname;
-  while ( (id = strchr (id, '_')) )
-    {
-      id++;
-      sepcnt++;
-    }
-  
-  /* Either 3 or 4 separating underscores are required */
-  if ( sepcnt != 3 && sepcnt != 4 )
-    {
-      return -1;
-    }
-  
-  /* Duplicate srcname */
-  if ( ! (id = strdup(srcname)) )
-    {
-      fprintf (stderr, "splitsrcname(): Error duplicating srcname");
-      return -1;
-    }
-  
-  /* Network */
-  top = id;
-  if ( (ptr = strchr (top, '_')) )
-    {
-      next = ptr + 1;
-      *ptr = '\0';
-      
-      if ( net )
-	strcpy (net, top);
-      
-      top = next;
-    }
-  /* Station */
-  if ( (ptr = strchr (top, '_')) )
-    {
-      next = ptr + 1;
-      *ptr = '\0';
-      
-      if ( sta )
-	strcpy (sta, top);
-      
-      top = next;
-    }
-  /* Location */
-  if ( (ptr = strchr (top, '_')) )
-    {
-      next = ptr + 1;
-      *ptr = '\0';
-      
-      if ( loc )
-	strcpy (loc, top);
-      
-      top = next;
-    }
-  /* Channel & optional Quality */
-  if ( (ptr = strchr (top, '_')) )
-    {
-      next = ptr + 1;
-      *ptr = '\0';
-      
-      if ( chan )
-	strcpy (chan, top);
-      
-      top = next;
-      
-      /* Quality */
-      if ( *top && qual )
-	{
-	  /* Quality is a single character */
-	  *qual = *top;
-	}
-    }
-  /* Otherwise only Channel */
-  else if ( *top && chan )
-    {
-      strcpy (chan, top);
-    }
-  
-  /* Free duplicated stream ID */
-  if ( id )
-    free (id);
-  
-  return 0;
-}  /* End of splitsrcname() */
 
 
 /***************************************************************************
