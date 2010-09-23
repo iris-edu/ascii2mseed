@@ -1,4 +1,4 @@
-.TH ASCII2MSEED 1 2009/11/21
+.TH ASCII2MSEED 1 2010/09/23
 .SH NAME
 ASCII time series to Mini-SEED converter
 
@@ -72,9 +72,10 @@ slist.ascii
 .SH ASCII DATA
 The input ASCII data are expected to start with a simple header
 followed by data samples in one of two forms: a columnar sample value
-listing or time-sample pairs.  The header identifies the time series
-source parameters (SEED convention) along with number of samples,
-sample rate, time of first sample, sample list format, sample type and
+listing or time-sample pairs.  The columnar sample value listing may
+have 1 to 8 columns.  The header identifies the time series source
+parameters (SEED convention) along with number of samples, sample
+rate, time of first sample, sample list format, sample type and
 optionally the units of the samples.
 
 Header lines are of the general form:
