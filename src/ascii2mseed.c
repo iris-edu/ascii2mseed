@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2010.266
+ * modified 2013.025
  ***************************************************************************/
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "1.0"
+#define VERSION "1.1"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
@@ -473,11 +473,12 @@ readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double sampra
 	  /* Check sample spacing */
 	  if ( prevtime != HPTERROR )
 	    {
-	      double srate = HPTMODULUS / (samptime - prevtime);
+	      double srate = (double) HPTMODULUS / (samptime - prevtime);
 	      
 	      if ( ! MS_ISRATETOLERABLE (samprate, srate) )
 		{
-		  fprintf (stderr, "Data samples are not evenly sampled starting at sample %d\n", linecnt);
+		  fprintf (stderr, "Data samples are not evenly sampled starting at sample %d (%g versus %g)\n",
+                           linecnt, samprate, srate);
 		  return linecnt;
 		}
 	    }

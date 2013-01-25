@@ -1,3 +1,7 @@
+2013.025: 1.1
+	- Fix handling of non-integer sampling rates for TSPAIR input.  Thanks
+	to K. Anderson for reporting this.
+
 2010.266: 1.0
 	- Update libmseed to 2.5.1 release.
 	- Use libmseed ms_splitsrcname() instead of internal version.
