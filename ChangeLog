@@ -1,6 +1,7 @@
 2015.030:
 	- Update libmseed to 2.13 release.
 	- Update packed trace, record and sample counters to 64-bit integers.
+	- Clean up Makefile and src/Makefile, remove old targets.
 
 2013.025: 1.1
 	- Fix handling of non-integer sampling rates for TSPAIR input.  Thanks
