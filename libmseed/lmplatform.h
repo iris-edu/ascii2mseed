@@ -18,7 +18,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified: 2010.006
+ * modified: 2014.074
  ***************************************************************************/
 
 #ifndef LMPLATFORM_H
@@ -52,7 +52,7 @@ extern "C" {
    * WIN32 => WIN32 and Windows Sockets 2 (LMP_WIN32)
    */
 
-#if defined(__linux__) || defined(__linux)
+#if defined(__linux__) || defined(__linux) || defined(__CYGWIN__)
   #define LMP_GLIBC2 1
 
   #include <stdlib.h>
@@ -98,7 +98,7 @@ extern "C" {
   #include <string.h>
   #include <ctype.h>
 
-#elif defined(WIN32)
+#elif defined(WIN32) || defined(WIN64)
   #define LMP_WIN32 1
 
   #include <windows.h>
@@ -108,11 +108,20 @@ extern "C" {
   #include <sys/types.h>
   #include <ctype.h>
 
-  #define snprintf _snprintf
-  #define vsnprintf _vsnprintf
-  #define strcasecmp _stricmp
-  #define strncasecmp _strnicmp
-  #define strtoull _strtoui64
+  #if defined(_MSC_VER)
+    #define snprintf _snprintf
+    #define vsnprintf _vsnprintf
+    #define strcasecmp _stricmp
+    #define strncasecmp _strnicmp
+    #define strtoull _strtoui64
+    #define strdup _strdup
+    #define fileno _fileno
+  #endif
+
+  #if defined(__MINGW32__) 
+    #define fstat _fstat 
+    #define stat _stat 
+  #endif 
 
   typedef signed char int8_t;
   typedef unsigned char uint8_t;

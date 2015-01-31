@@ -7,7 +7,7 @@
  *   ORFEUS/EC-Project MEREDIAN
  *   IRIS Data Management Center
  *
- * modified: 2009.175
+ * modified: 2012.088
  ***************************************************************************/
 
 #include <stdio.h>
@@ -286,7 +286,22 @@ msr_normalize_header ( MSRecord *msr, flag verbose )
       ms_strncpopen (msr->fsdh->location, msr->location, 2);
       ms_strncpopen (msr->fsdh->channel, msr->channel, 3);
       ms_hptime2btime (msr->starttime, &(msr->fsdh->start_time));
-      ms_genfactmult (msr->samprate, &(msr->fsdh->samprate_fact), &(msr->fsdh->samprate_mult));
+      
+      /* When the sampling rate is <= 32767 Hertz determine the factor
+       * and multipler through rational approximation.  For higher rates
+       * set the factor and multiplier to 0. */
+      if ( msr->samprate <= 32767.0 )
+	{
+	  ms_genfactmult (msr->samprate, &(msr->fsdh->samprate_fact), &(msr->fsdh->samprate_mult));
+	}
+      else
+	{
+	  if ( verbose > 1 )
+	    ms_log (1, "Sampling rate too high to approximate factor & multiplier: %g\n",
+		    msr->samprate);
+	  msr->fsdh->samprate_fact = 0;
+	  msr->fsdh->samprate_mult = 0;
+	}
       
       offset += 48;
       
@@ -308,7 +323,7 @@ msr_normalize_header ( MSRecord *msr, flag verbose )
       
       if ( cur_blkt->blkt_type == 100 && msr->Blkt100 )
 	{
-	  msr->Blkt100->samprate = msr->samprate;
+	  msr->Blkt100->samprate = (float)msr->samprate;
 	  offset += sizeof (struct blkt_100_s);
 	}
       else if ( cur_blkt->blkt_type == 1000 && msr->Blkt1000 )
@@ -441,15 +456,15 @@ msr_duplicate (MSRecord *msr, flag datadup)
 	}
       
       /* Allocate memory for new data array */
-      if ( (dupmsr->datasamples = (void *) malloc (msr->numsamples * samplesize)) == NULL )
+      if ( (dupmsr->datasamples = (void *) malloc ((size_t)(msr->numsamples * samplesize))) == NULL )
 	{
 	  ms_log (2, "msr_duplicate(): Error allocating memory\n");
 	  free (dupmsr);
-	  return NULL;	  
+	  return NULL;
 	}
       
       /* Copy the data array */
-      memcpy (dupmsr->datasamples, msr->datasamples, (msr->numsamples * samplesize));
+      memcpy (dupmsr->datasamples, msr->datasamples, ((size_t)(msr->numsamples * samplesize)));
     }
   /* Otherwise make sure the sample array and count are zero */
   else
@@ -587,7 +602,14 @@ msr_endtime (MSRecord *msr)
     return HPTERROR;
 
   if ( msr->samprate > 0.0 && msr->samplecnt > 0 )
-    span = ((double) (msr->samplecnt - 1) / msr->samprate * HPTMODULUS) + 0.5;
+    span = (hptime_t)(((double) (msr->samplecnt - 1) / msr->samprate * HPTMODULUS) + 0.5);
+
+  /* If a positive leap second occurred during this record as denoted by
+   * bit 4 of the activity flags being set, reduce the end time to match
+   * the now shifted UTC time. */
+  if ( msr->fsdh )
+    if ( msr->fsdh->act_flags & 0x10 )
+      span -= HPTMODULUS;
   
   return (msr->starttime + span);
 } /* End of msr_endtime() */
@@ -729,9 +751,9 @@ msr_print (MSRecord *msr, flag details)
     }
   else
     {
-      ms_log (0, "%s, %06d, %c, %d, %d samples, %-.10g Hz, %s\n",
+      ms_log (0, "%s, %06d, %c, %d, %lld samples, %-.10g Hz, %s\n",
 	      srcname, msr->sequence_number, msr->dataquality,
-	      msr->reclen, msr->samplecnt, msr->samprate, time);
+	      msr->reclen, (long long int) msr->samplecnt, msr->samprate, time);
     }
 
   /* Report information in the blockette chain */

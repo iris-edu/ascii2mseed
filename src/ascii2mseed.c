@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2013.025
+ * modified 2015.030
  ***************************************************************************/
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "1.1"
+#define VERSION "1.2dev"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
@@ -49,9 +49,9 @@ static FILE *ofp         = 0;
 /* A list of input files */
 struct listnode *filelist = 0;
 
-static int packedtraces  = 0;
-static int packedsamples = 0;
-static int packedrecords = 0;
+static int64_t packedtraces  = 0;
+static int64_t packedsamples = 0;
+static int64_t packedrecords = 0;
 
 int
 main (int argc, char **argv)
@@ -89,8 +89,10 @@ main (int argc, char **argv)
       flp = flp->next;
     }
   
-  fprintf (stderr, "Packed %d trace(s) of %d samples into %d records\n",
-	   packedtraces, packedsamples, packedrecords);
+  fprintf (stderr, "Packed %lld trace(s) of %lld samples into %lld records\n",
+	   (long long int)packedtraces,
+           (long long int)packedsamples,
+           (long long int)packedrecords);
   
   /* Make sure everything is cleaned up */
   if ( ofp )
@@ -111,8 +113,8 @@ static void
 packtraces (MSTraceGroup *mstg, flag flush)
 {
   MSTrace *mst;
-  int trpackedsamples = 0;
-  int trpackedrecords = 0;
+  int64_t trpackedsamples = 0;
+  int64_t trpackedrecords = 0;
   
   mst = mstg->traces;
   while ( mst )
@@ -302,8 +304,8 @@ packascii (char *infile)
 	  
 	  if ( verbose >= 1 )
 	    {
-	      fprintf (stderr, "[%s] %d samps @ %.6f Hz for N: '%s', S: '%s', L: '%s', C: '%s'\n",
-		       infile, msr->numsamples, msr->samprate,
+	      fprintf (stderr, "[%s] %lld samps @ %.6f Hz for N: '%s', S: '%s', L: '%s', C: '%s'\n",
+		       infile, (long long int)msr->numsamples, msr->samprate,
 		       msr->network, msr->station,  msr->location, msr->channel);
 	    }
 	  

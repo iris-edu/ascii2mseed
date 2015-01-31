@@ -6,7 +6,7 @@
  * Chad Trabant
  * IRIS Data Management Center
  *
- * modified: 2008.171
+ * modified: 2014.197
  ***************************************************************************/
 
 #include <stdio.h>
@@ -95,7 +95,7 @@ ms_loginit_l (MSLogParam *logp,
  * This function modifies the logging parameters in the passed MSLogParam.
  *
  * Any log/error printing functions indicated must except a single
- * argument, namely a string (const char *).  The ms_log() and
+ * argument, namely a string (char *).  The ms_log() and
  * ms_log_r() functions format each message and then pass the result
  * on to the log/error printing functions.
  *
@@ -221,7 +221,7 @@ ms_log_l (MSLogParam *logp, int level, ...)
  * 2+ : Error messagess, printed using diag_print with errprefix
  *
  * This function builds the log/error message and passes to it as a
- * string (const char *) to the functions defined with ms_loginit() or
+ * string (char *) to the functions defined with ms_loginit() or
  * ms_loginit_l().  If the log/error printing functions have not been
  * defined messages will be printed with fprintf, log messages to
  * stdout and error messages to stderr.
@@ -242,7 +242,13 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
   int retvalue = 0;
   int presize;
   const char *format;
-
+  
+  if ( ! logp )
+    {
+      fprintf(stderr, "ms_log_main() called without specifying log parameters");
+      return -1;
+    }
+  
   message[0] = '\0';
 
   format = va_arg (*varlist, const char *);
@@ -252,6 +258,7 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
       if ( logp->errprefix != NULL )
         {
           strncpy (message, logp->errprefix, MAX_LOG_MSG_LENGTH);
+          message[MAX_LOG_MSG_LENGTH - 1] = '\0';
         }
       else
         {
@@ -267,7 +274,7 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
 
       if ( logp->diag_print != NULL )
         {
-          logp->diag_print ((const char *) message);
+          logp->diag_print (message);
         }
       else
         {
@@ -279,6 +286,7 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
       if ( logp->logprefix != NULL )
         {
           strncpy (message, logp->logprefix, MAX_LOG_MSG_LENGTH);
+          message[MAX_LOG_MSG_LENGTH - 1] = '\0';
         }
       
       presize = strlen(message);
@@ -290,7 +298,7 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
       
       if ( logp->diag_print != NULL )
         {
-          logp->diag_print ((const char *) message);
+          logp->diag_print (message);
         }
       else
         {
@@ -302,6 +310,7 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
       if ( logp->logprefix != NULL )
         {
           strncpy (message, logp->logprefix, MAX_LOG_MSG_LENGTH);
+          message[MAX_LOG_MSG_LENGTH - 1] = '\0';
         }
       
       presize = strlen(message);
@@ -313,7 +322,7 @@ ms_log_main (MSLogParam *logp, int level, va_list *varlist)
       
       if ( logp->log_print != NULL )
 	{
-           logp->log_print ((const char *) message);
+           logp->log_print (message);
 	}
       else
 	{
