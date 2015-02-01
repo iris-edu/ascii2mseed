@@ -193,12 +193,14 @@ packascii (char *infile)
   struct blkt_100_s Blkt100;
   int fields;
   
-  char rdline[250];
+  char *cp;
+  char rdline[350];
   char srcname[50];
   char timestr[50];
   char listtype[20];
   char sampletype[20];
   char unitstr[20];
+  char flagstr[100];
   double samplerate;
   int samplecnt;
   
@@ -215,12 +217,21 @@ packascii (char *infile)
   
   while ( fgets (rdline, sizeof(rdline), ifp) )
     {
-      // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, SLIST, INTEGER, Counts
-      // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, TSPAIR, INTEGER, Counts
+      // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, SLIST, INTEGER[, Counts[, Flags]]
+      // TIMESERIES TA_J15A__BHZ_R, 635 samples, 40 sps, 2008-01-15T00:00:00.025000, TSPAIR, INTEGER[, Counts[, Flags]]
       
-      fields = sscanf (rdline, "TIMESERIES %[^,], %d samples, %lf sps, %[^,], %[^,], %[^,], %s",
-		       srcname, &samplecnt, &samplerate, timestr, listtype, sampletype, unitstr);
+      /* Terminate input string at first newline or carriage return */
+      cp = rdline;
+      while ( *cp && *cp != '\r' && *cp != '\n' ) cp++;
+      *cp = '\0';
       
+      unitstr[0] = '\0';
+      flagstr[0] = '\0';
+      fields = sscanf (rdline, "TIMESERIES %[^,], %d samples, %lf sps, %[^,], %[^,], %[^,], %[^,], %s",
+		       srcname, &samplecnt, &samplerate, timestr, listtype, sampletype, unitstr, flagstr);
+      
+      //fprintf (stderr, "TIMESERIES (%d), unitstr: '%s', flagstr: '%s'\n", fields, unitstr, flagstr);
+
       if ( fields >= 6 )
 	{
 	  /* Initialize new MSTrace holder */
