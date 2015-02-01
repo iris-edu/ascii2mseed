@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2015.030
+ * modified 2015.032
  ***************************************************************************/
 
 #include <stdio.h>
@@ -186,7 +186,7 @@ packascii (char *infile)
 {
   FILE *ifp = 0;
   MSRecord *msr = 0;
-  MSTrace *mst;
+  MSTrace *mst = 0;
   MSTraceGroup *mstg = 0;
   struct blkt_1000_s Blkt1000;
   struct blkt_1001_s Blkt1001;
@@ -223,40 +223,40 @@ packascii (char *infile)
       
       if ( fields >= 6 )
 	{
-	  /* (Re)Initialize MSRecord holder */
-	  if ( ! (msr = msr_init(msr)) )
+	  /* Initialize new MSTrace holder */
+	  if ( ! (mst = mst_init(NULL)) )
 	    {
-	      fprintf (stderr, "Cannot initialize MSRecord strcture\n");
+	      fprintf (stderr, "Cannot initialize MSTrace strcture\n");
 	      return -1;
 	    }
 	  
-	  /* Split source name into separate quantities for the MSRecord */
-	  if ( ms_splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->dataquality)) )
+	  /* Split source name into separate quantities for the MSTrace */
+	  if ( ms_splitsrcname (srcname, mst->network, mst->station, mst->location, mst->channel, &(mst->dataquality)) )
 	    {
 	      fprintf (stderr, "Cannot parse channel source name: %s (improperly specified?)\n", srcname);
 	      return -1;
 	    }
 	  
 	  /* Convert time string to a high-precision time value */
-	  msr->starttime = ms_timestr2hptime (timestr);
-	  if ( msr->starttime == HPTERROR )
+	  mst->starttime = ms_timestr2hptime (timestr);
+	  if ( mst->starttime == HPTERROR )
 	    {
 	      fprintf (stderr, "Error converting start time: %s\n", timestr);
 	      return -1;
 	    }
 	  
-	  msr->samplecnt = samplecnt;
-	  msr->numsamples = samplecnt;
-	  msr->samprate = samplerate;
+	  mst->samplecnt = samplecnt;
+	  mst->numsamples = samplecnt;
+	  mst->samprate = samplerate;
 	  
 	  /* Determine sample type */
 	  if ( ! strncasecmp (sampletype, "INTEGER", 7) )
 	    {
-	      msr->sampletype = 'i';
+	      mst->sampletype = 'i';
 	    }
 	  else if ( ! strncasecmp (sampletype, "FLOAT", 5) )
 	    {
-	      msr->sampletype = 'f';
+	      mst->sampletype = 'f';
 	      encoding = 4;
 	    }
 	  else
@@ -266,7 +266,7 @@ packascii (char *infile)
 	    }
 	  
 	  /* Allocate memory for the data samples */
-	  if ( ! (msr->datasamples = calloc (msr->numsamples, 4)) )
+	  if ( ! (mst->datasamples = calloc (mst->numsamples, 4)) )
 	    {
 	      fprintf (stderr, "Cannot allocate memory for data samples\n");
 	      return -1;
@@ -274,7 +274,7 @@ packascii (char *infile)
 	  
 	  if ( ! strncmp (listtype, "SLIST", 5) )
 	    {
-	      if ( readslist (ifp, msr->datasamples, msr->sampletype, msr->numsamples) )
+	      if ( readslist (ifp, mst->datasamples, mst->sampletype, mst->numsamples) )
 		{
 		  fprintf (stderr, "Error reading samples from file\n");
 		  return -1;
@@ -282,7 +282,7 @@ packascii (char *infile)
 	    }
 	  else if ( ! strncmp (listtype, "TSPAIR", 6) )
 	    {
-	      if ( readtspair (ifp, msr->datasamples, msr->sampletype, msr->numsamples, msr->samprate) )
+	      if ( readtspair (ifp, mst->datasamples, mst->sampletype, mst->numsamples, mst->samprate) )
 		{
 		  fprintf (stderr, "Error reading samples from file\n");
 		  return -1;
@@ -293,65 +293,67 @@ packascii (char *infile)
 	      fprintf (stderr, "Unrecognized sample list type: '%s'\n", listtype);
 	      return -1;
 	    }	  
-	  
-	  /*
-	  if ( forcenet )
-	    ms_strncpclean (msr->network, forcenet, 2);
-	  
-	  if ( forceloc )
-	    ms_strncpclean (msr->location, forceloc, 2);
-	  */
-	  
+          
 	  if ( verbose >= 1 )
 	    {
 	      fprintf (stderr, "[%s] %lld samps @ %.6f Hz for N: '%s', S: '%s', L: '%s', C: '%s'\n",
-		       infile, (long long int)msr->numsamples, msr->samprate,
-		       msr->network, msr->station,  msr->location, msr->channel);
+		       infile, (long long int)mst->numsamples, mst->samprate,
+		       mst->network, mst->station,  mst->location, mst->channel);
 	    }
 	  
-	  if ( ! (mst = mst_addmsrtogroup (mstg, msr, 0, -1.0, -1.0)) )
+          if ( ! mst_addtracetogroup (mstg, mst) )
 	    {
-	      fprintf (stderr, "[%s] Error adding samples to MSTraceGroup\n", infile);
+	      fprintf (stderr, "[%s] Error adding trace to MSTraceGroup\n", infile);
 	    }
 	  
-	  /* Create an MSRecord template for the MSTrace by copying the current holder */
-	  if ( ! mst->prvtptr )
-	    {
-	      mst->prvtptr = msr_duplicate (msr, 0);
-	      
-	      if ( ! mst->prvtptr )
-		{
-		  fprintf (stderr, "[%s] Error duplicate MSRecord for template\n", infile);
-		  return -1;
-		}
-	      
-	      /* Add blockettes 1000 & 1001 to template */
-	      memset (&Blkt1000, 0, sizeof(struct blkt_1000_s));
-	      msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt1000,
-				sizeof(struct blkt_1001_s), 1000, 0);
-	      memset (&Blkt1001, 0, sizeof(struct blkt_1001_s));
-	      msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt1001,
-				sizeof(struct blkt_1001_s), 1001, 0);
-	      
-	      /* Add blockette 100 to template if requested */
-	      if ( srateblkt )
-		{
-		  memset (&Blkt100, 0, sizeof(struct blkt_100_s));
-		  Blkt100.samprate = (float) msr->samprate;
-		  msr_addblockette ((MSRecord *) mst->prvtptr, (char *) &Blkt100,
-				    sizeof(struct blkt_100_s), 100, 0);
-		}
-	    } /* End of creating template MSRecord */
-	} /* End of TIMESERIES line detection loop */
+	  /* Create an MSRecord template for the MSTrace */
+          if ( ! (msr = msr_init(NULL)) )
+            {
+              fprintf (stderr, "[%s] Cannot initialize MSRecord strcture\n", infile);
+              return -1;
+            }
+          
+          mst->prvtptr = msr;
+          
+	  /* Split source name into separate quantities for the template MSRecord */
+	  if ( ms_splitsrcname (srcname, msr->network, msr->station, msr->location, msr->channel, &(msr->dataquality)) )
+            {
+              fprintf (stderr, "Cannot parse channel source name: %s (improperly specified?)\n", srcname);
+              return -1;
+            }
+          
+          /* Add blockettes 1000 & 1001 to template */
+          memset (&Blkt1000, 0, sizeof(struct blkt_1000_s));
+          msr_addblockette (msr, (char *) &Blkt1000,
+                            sizeof(struct blkt_1001_s), 1000, 0);
+          memset (&Blkt1001, 0, sizeof(struct blkt_1001_s));
+          msr_addblockette (msr, (char *) &Blkt1001,
+                            sizeof(struct blkt_1001_s), 1001, 0);
+          
+          /* Add blockette 100 to template if requested */
+          if ( srateblkt )
+            {
+              memset (&Blkt100, 0, sizeof(struct blkt_100_s));
+              Blkt100.samprate = (float) mst->samprate;
+              msr_addblockette (msr, (char *) &Blkt100,
+                                sizeof(struct blkt_100_s), 100, 0);
+            }
+        } /* End of TIMESERIES line detection loop */
     } /* End of reading lines from input file */
   
+  /* Sort MSTraceGroup before packing */
+  if ( mst_groupsort (mstg, 1) )
+    {
+      fprintf (stderr, "[%s] Error sorting traces\n", infile);
+      return -1;
+    }
+  
+  /* Pack MSTraceGroup into miniSEED */
   packtraces (mstg, 1);
+  
   packedtraces += mstg->numtraces;
   
   fclose (ifp);
-  
-  if ( msr )
-    msr_free (&msr);
   
   if ( mstg )
     freetraces (mstg);
