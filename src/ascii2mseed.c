@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2015.032
+ * modified 2015.034
  ***************************************************************************/
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "1.2dev"
+#define VERSION "1.2"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
@@ -29,6 +29,7 @@ struct listnode {
 static void packtraces (MSTraceGroup *mstg, flag flush);
 static void freetraces (MSTraceGroup *mstg);
 static int packascii (char *infile);
+static int setheadervalues (char *flags, MSRecord *msr);
 static int readslist (FILE *ifp, void *data, char datatype, int32_t datacnt);
 static int readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double samprate);
 static int parameter_proc (int argcount, char **argvec);
@@ -37,6 +38,9 @@ static int readlistfile (char *listfile);
 static void addnode (struct listnode **listroot, char *key, char *data);
 static void record_handler (char *record, int reclen, void *handlerdata);
 static void usage (void);
+
+static inline void setbit (uint8_t *byte, int bit) { *byte |= (1 << bit); }
+static inline void clearbit (uint8_t *byte, int bit) { *byte &= ~(1 << bit); }
 
 static int   verbose     = 0;
 static int   packreclen  = -1;
@@ -231,7 +235,7 @@ packascii (char *infile)
 		       srcname, &samplecnt, &samplerate, timestr, listtype, sampletype, unitstr, flagstr);
       
       //fprintf (stderr, "TIMESERIES (%d), unitstr: '%s', flagstr: '%s'\n", fields, unitstr, flagstr);
-
+      
       if ( fields >= 6 )
 	{
 	  /* Initialize new MSTrace holder */
@@ -240,7 +244,7 @@ packascii (char *infile)
 	      fprintf (stderr, "Cannot initialize MSTrace strcture\n");
 	      return -1;
 	    }
-	  
+          
 	  /* Split source name into separate quantities for the MSTrace */
 	  if ( ms_splitsrcname (srcname, mst->network, mst->station, mst->location, mst->channel, &(mst->dataquality)) )
 	    {
@@ -255,7 +259,7 @@ packascii (char *infile)
 	      fprintf (stderr, "Error converting start time: %s\n", timestr);
 	      return -1;
 	    }
-	  
+          
 	  mst->samplecnt = samplecnt;
 	  mst->numsamples = samplecnt;
 	  mst->samprate = samplerate;
@@ -315,6 +319,7 @@ packascii (char *infile)
           if ( ! mst_addtracetogroup (mstg, mst) )
 	    {
 	      fprintf (stderr, "[%s] Error adding trace to MSTraceGroup\n", infile);
+              return -1;
 	    }
 	  
 	  /* Create an MSRecord template for the MSTrace */
@@ -349,6 +354,15 @@ packascii (char *infile)
               msr_addblockette (msr, (char *) &Blkt100,
                                 sizeof(struct blkt_100_s), 100, 0);
             }
+          
+          /* Set flags in header if present in TIMESERIES declaration */
+          if ( flagstr[0] )
+            {
+              if ( setheadervalues (flagstr, msr) )
+                {
+                  return -1;
+                }
+            }
         } /* End of TIMESERIES line detection loop */
     } /* End of reading lines from input file */
   
@@ -371,6 +385,124 @@ packascii (char *infile)
   
   return 0;
 }  /* End of packascii() */
+
+
+/***************************************************************************
+ * setheadervalues:
+ *
+ * Read a string of encoded, bar-separated miniSEED header values
+ * and set them appropriately in the specified MSRecord.
+ *
+ * Supported header flags:
+ *   FDSH:ACTFLAGS:[bit]=[value]
+ *   FDSH:IOFLAGS:[bit]=[value]
+ *   FDSH:DQFLAGS:[bit]=[value]
+ *   B1001:TIMINGQUALITY=[value]
+ *
+ * Example: "FSDH:IOFLAGS:5=1|B1001:TIMINGQUALITY=100"
+ *
+ * Returns 0 on sucess or non-zero on error.
+ ***************************************************************************/
+static int
+setheadervalues (char *flags, MSRecord *msr)
+{
+  char *cp;
+  int fields;
+  int bit;
+  int value;
+  
+  if ( ! flags || ! msr )
+    return -1;
+
+  /* Allocate FSDH struct if needed and not already present */
+  if ( strstr (flags, "FSDH") )
+    {
+      if ( ! msr->fsdh )
+        {
+          if ( ! (msr->fsdh = malloc (sizeof(struct fsdh_s))) )
+            {
+              fprintf (stderr, "Cannot initialize FSDH strcture\n");
+              return -1;
+            }
+        }
+    }
+  
+  cp = flags;
+  do
+    {
+      if ( ! strncmp (cp, "FSDH:ACTFLAGS", 13) )
+        {
+          fields = sscanf (cp, "FSDH:ACTFLAGS:%d=%d", &bit, &value);
+          if ( fields == 2 )
+            {
+              if ( value )
+                setbit (&msr->fsdh->act_flags, bit);
+              else
+                clearbit (&msr->fsdh->act_flags, bit);
+            }
+          else
+            {
+              fprintf (stderr, "Error parsing ACTFLAG starting at: '%s'\n", cp);
+              return -1;
+            }
+        }
+      else if ( ! strncmp (cp, "FSDH:IOFLAGS", 12) )
+        {
+          fields = sscanf (cp, "FSDH:IOFLAGS:%d=%d", &bit, &value);
+          if ( fields == 2 )
+            {
+              if ( value )
+                setbit (&msr->fsdh->io_flags, bit);
+              else
+                clearbit (&msr->fsdh->io_flags, bit);
+            }
+          else
+            {
+              fprintf (stderr, "Error parsing IOFLAG starting at: '%s'\n", cp);
+              return -1;
+            }
+        }
+      else if ( ! strncmp (cp, "FSDH:DQFLAGS", 12) )
+        {
+          fields = sscanf (cp, "FSDH:DQFLAGS:%d=%d", &bit, &value);
+          if ( fields == 2 )
+            {
+              if ( value )
+                setbit (&msr->fsdh->dq_flags, bit);
+              else
+                clearbit (&msr->fsdh->dq_flags, bit);
+            }
+          else
+            {
+              fprintf (stderr, "Error parsing DQFLAG starting at: '%s'\n", cp);
+              return -1;
+            }
+        }
+      else if ( ! strncmp (cp, "B1001:TIMINGQUALITY", 19) )
+        {
+          fields = sscanf (cp, "B1001:TIMINGQUALITY=%d", &value);
+          if ( fields == 1 )
+            {
+              if ( msr->Blkt1001 )
+                msr->Blkt1001->timing_qual = value;
+            }
+          else
+            {
+              fprintf (stderr, "Error parsing B1001:TIMINGQUALITY starting at: '%s'\n", cp);
+              return -1;
+            }
+        }
+      else
+        {
+          fprintf (stderr, "Unrecognized header value starting at: '%s'\n", cp);
+          return -1;
+        }
+      /* WTF: the loop condition finds the next bar, advances one more character
+       * and tests that it is not the terminator.  Neato and obtuse. */
+    } while ( (cp = strchr(cp, '|')) && *(cp++) );
+  
+  return 0;
+}  /* End of setheadervalues() */
 
 
 /***************************************************************************
