@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2015.034
+ * modified 2015.146
  ***************************************************************************/
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "1.2"
+#define VERSION "1.3"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
@@ -269,6 +269,11 @@ packascii (char *infile)
 	    {
 	      mst->sampletype = 'i';
 	    }
+	  else if ( ! strncasecmp (sampletype, "FLOAT64", 7) )
+	    {
+	      mst->sampletype = 'd';
+	      encoding = 5;
+	    }
 	  else if ( ! strncasecmp (sampletype, "FLOAT", 5) )
 	    {
 	      mst->sampletype = 'f';
@@ -281,7 +286,7 @@ packascii (char *infile)
 	    }
 	  
 	  /* Allocate memory for the data samples */
-	  if ( ! (mst->datasamples = calloc (mst->numsamples, 4)) )
+	  if ( ! (mst->datasamples = calloc (mst->numsamples, ms_samplesize(mst->sampletype))) )
 	    {
 	      fprintf (stderr, "Cannot allocate memory for data samples\n");
 	      return -1;
@@ -511,8 +516,9 @@ setheadervalues (char *flags, MSRecord *msr)
  * Read a alphanumeric data from a file and add to an array, the array
  * must already be allocated with datacnt floats.
  *
- * The data must be organized in 1-8 columns.  32-bit integer and floats
- * are parsed according to the 'datatype' argument ('i' or 'f').
+ * The data must be organized in 1-8 columns.  32-bit integers, floats
+ * and 64-bit doubles are parsed according to the 'datatype' argument
+ * ('i', 'f' or 'd').
  *
  * Returns 0 on sucess or a positive number indicating line number of
  * parsing failure.
@@ -547,6 +553,12 @@ readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
 			(float *) data + dataidx + 3, (float *) data + dataidx + 4,
 			(float *) data + dataidx + 5, (float *) data + dataidx + 6,
 			(float *) data + dataidx + 7);
+      else if ( datatype == 'd' )
+	count = sscanf (line, " %lf %lf %lf %lf %lf %lf %lf %lf ", (double *) data + dataidx,
+			(double *) data + dataidx + 1, (double *) data + dataidx + 2,
+			(double *) data + dataidx + 3, (double *) data + dataidx + 4,
+			(double *) data + dataidx + 5, (double *) data + dataidx + 6,
+			(double *) data + dataidx + 7);
       
       samplesread += count;
       
@@ -570,8 +582,8 @@ readslist (FILE *ifp, void *data, char datatype, int32_t datacnt)
  * must already be allocated with datacnt floats.
  *
  * The data must be organized in 2 column, time-sample pairs.  32-bit
- * integer and floats are parsed according to the 'datatype' argument
- * ('i' or 'f').
+ * integers, floats and 64-bit doubles are parsed according to the
+ * 'datatype' argument ('i', 'f' or 'd').
  *
  * Example data line:
  * "2008-01-15T00:00:08.975000  678.145"
@@ -607,6 +619,8 @@ readtspair (FILE *ifp, void *data, char datatype, int32_t datacnt, double sampra
 	count = sscanf (line, " %s %d ", stime, (int32_t *) data + dataidx);
       else if ( datatype == 'f' )
 	count = sscanf (line, " %s %f ", stime, (float *) data + dataidx);
+      else if ( datatype == 'd' )
+	count = sscanf (line, " %s %lf ", stime, (double *) data + dataidx);
       
       if ( count == 2 )
 	{
@@ -994,7 +1008,8 @@ usage (void)
 	   "\n"
 	   "Supported Mini-SEED encoding formats:\n"
            " 3  : 32-bit integers\n"
-           " 4  : 32-bit floats, required for float input samples\n"
+           " 4  : 32-bit floats, required for float (FLOAT) input samples\n"
+           " 5  : 64-bit floats, required for double (FLOAT64) input samples\n"
            " 10 : Steim 1 compression of 32-bit integers\n"
            " 11 : Steim 2 compression of 32-bit integers\n"
 	   "\n");

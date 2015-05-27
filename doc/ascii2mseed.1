@@ -1,4 +1,4 @@
-.TH ASCII2MSEED 1 2015/02/03
+.TH ASCII2MSEED 1 2015/05/26
 .SH NAME
 ASCII time series to Mini-SEED converter
 
@@ -92,7 +92,7 @@ Header field descriptions:
 \fB# sps\fP:      Sampling rate in samples per second
 \fBTime\fP:       Time of first sample in ISO YYYY-MM-DDTHH:MM:SS.FFFFFF format
 \fBFormat\fP:     'SLIST' (sample list) or 'TSPAIR' (time-sample pair)
-\fBType\fP:       Sample type 'INTEGER' or 'FLOAT'
+\fBType\fP:       Sample type 'INTEGER' or 'FLOAT' or 'FLOAT64'
 \fBUnits\fP:      Units of time-series, optional (will not be present in Mini-SEED)
 \fBHeaders\fP:    Mini-SEED header values and flags, optional
 .fi
@@ -107,6 +107,11 @@ The \fBSourceName\fP field identifies the source of the time series
 data using the SEED name nomenclature separated by underscores.  The
 data quality code is optional and defaults to 'D'.  Spaces in the
 source name field are not supported.
+
+The \fBType\fP field identifies the expected value data type.  The
+type instructs the converter to parse the data values with the
+following mapping: \fBINTEGER\fP => 32-bit integer, \fBFLOAT\fP =>
+32-bit float and \fBFLOAT64\fP => 64-bit float (double).
 
 More than one data segment (header and associated data samples) may be
 contained in any given input file.
