@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, IRIS Data Management Center
  *
- * modified 2015.146
+ * modified 2015.148
  ***************************************************************************/
 
 #include <stdio.h>
@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "1.3"
+#define VERSION "1.4"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
@@ -119,7 +119,7 @@ packtraces (MSTraceGroup *mstg, flag flush)
   MSTrace *mst;
   int64_t trpackedsamples = 0;
   int64_t trpackedrecords = 0;
-  
+
   mst = mstg->traces;
   while ( mst )
     {
@@ -207,6 +207,7 @@ packascii (char *infile)
   char flagstr[100];
   double samplerate;
   int samplecnt;
+  hptime_t hpdelta;
   
   /* Init MSTraceGroup */
   mstg = mst_initgroup (mstg);
@@ -252,6 +253,10 @@ packascii (char *infile)
 	      return -1;
 	    }
 	  
+          mst->samplecnt = samplecnt;
+	  mst->numsamples = samplecnt;
+	  mst->samprate = samplerate;
+
 	  /* Convert time string to a high-precision time value */
 	  mst->starttime = ms_timestr2hptime (timestr);
 	  if ( mst->starttime == HPTERROR )
@@ -260,9 +265,8 @@ packascii (char *infile)
 	      return -1;
 	    }
           
-	  mst->samplecnt = samplecnt;
-	  mst->numsamples = samplecnt;
-	  mst->samprate = samplerate;
+          hpdelta = ( mst->samprate ) ? (hptime_t) (HPTMODULUS / mst->samprate) : 0;
+          mst->endtime = mst->starttime + (samplecnt - 1) * hpdelta;
 	  
 	  /* Determine sample type */
 	  if ( ! strncasecmp (sampletype, "INTEGER", 7) )
@@ -312,7 +316,7 @@ packascii (char *infile)
 	    {
 	      fprintf (stderr, "Unrecognized sample list type: '%s'\n", listtype);
 	      return -1;
-	    }	  
+	    }
           
 	  if ( verbose >= 1 )
 	    {
@@ -424,7 +428,7 @@ setheadervalues (char *flags, MSRecord *msr)
     {
       if ( ! msr->fsdh )
         {
-          if ( ! (msr->fsdh = malloc (sizeof(struct fsdh_s))) )
+          if ( ! (msr->fsdh = calloc (1, sizeof(struct fsdh_s))) )
             {
               fprintf (stderr, "Cannot initialize FSDH strcture\n");
               return -1;

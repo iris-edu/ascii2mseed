@@ -1,3 +1,9 @@
+2015.148: 1.4
+	- Initialize new FDSH memory to zeros for MSRecord template when header
+	flags are present (new feature in 1.2).
+	- Set end time of MSTrace representation of accumulated data, will help
+	in edge cases of sorting the traces properly.
+
 2015.146: 1.3
 	- Update libmseed to 2.16m release.
 	- Add handling of FLOAT64 data, encode as 64-bit doubles.
