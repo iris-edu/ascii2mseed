@@ -17,7 +17,7 @@
 
 #include <libmseed.h>
 
-#define VERSION "1.5dev"
+#define VERSION "1.5"
 #define PACKAGE "ascii2mseed"
 
 struct listnode {
