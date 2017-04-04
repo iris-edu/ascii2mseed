@@ -7,7 +7,7 @@ For usage infromation see the [ascii2mseed manual](doc/ascii2mseed.md) in the
 
 ## Downloading and building
 
-The [releases](https://github.com/iris-edu/mseed2ascii/releases) area
+The [releases](https://github.com/iris-edu/ascii2mseed/releases) area
 contains release versions.
 
 In most Unix/Linux environments a simple 'make' will build the program.
