@@ -1,4 +1,6 @@
 #
+# THIS FILE IS DEPRECATED AND WILL BE REMOVED IN A FUTURE RELEASE
+#
 # Wmake File for seisan2mseed - For Watcom's wmake
 # Use 'wmake -f Makefile.wat'
 
