@@ -1,6 +1,6 @@
-.TH ASCII2MSEED 1 2015/05/26
+.TH ASCII2MSEED 1 2017/04/03
 .SH NAME
-ASCII time series to Mini-SEED converter
+ASCII time series to miniSEED converter
 
 .SH SYNOPSIS
 .nf
@@ -8,10 +8,10 @@ ascii2mseed [options] file1 [file2 file3 ...]
 
 .fi
 .SH DESCRIPTION
-\fBascii2mseed\fP converts simple ASCII time series data to Mini-SEED
+\fBascii2mseed\fP converts simple ASCII time series data to miniSEED
 format.  If an input file name is prefixed with an '@' character the
 file is assumed to contain a list of input data files, see \fILIST
-FILES\fP below.  All output Mini-SEED records will be written to a
+FILES\fP below.  All output miniSEED records will be written to a
 specified output file.
 
 .SH OPTIONS
@@ -35,23 +35,23 @@ rate cannot be well approximated.  This option should be used in those
 cases.
 
 .IP "-r \fIbytes\fP"
-Specify the Mini-SEED record length in \fIbytes\fP, default is 4096.
+Specify the miniSEED record length in \fIbytes\fP, default is 4096.
 
 .IP "-e \fIencoding\fP"
-Specify the Mini-SEED data encoding format, default is 11 (Steim-2
+Specify the miniSEED data encoding format, default is 11 (Steim-2
 compression) for integer data and 4 for floats (stored uncompressed).
 Other supported encoding formats include 10 (Steim-1 compression), 1
 (16-bit integers) and 3 (uncompressed 32-bit integers).
 
 .IP "-b \fIbyteorder\fP"
-Specify the Mini-SEED byte order, default is 1 (big-endian or most
+Specify the miniSEED byte order, default is 1 (big-endian or most
 significant byte first).  The other option is 0 (little-endian or
 least significant byte first).  It is highly recommended to always
 create big-endian SEED.
 
 .IP "-o \fIoutfile\fP"
-Write all Mini-SEED records to \fIoutfile\fP, if \fIoutfile\fP is a
-single dash (-) then all Mini-SEED output will go to stdout.  All
+Write all miniSEED records to \fIoutfile\fP, if \fIoutfile\fP is a
+single dash (-) then all miniSEED output will go to stdout.  All
 diagnostic output from the program is written to stderr and should
 never get mixed with data going to stdout.
 
@@ -93,14 +93,14 @@ Header field descriptions:
 \fBTime\fP:       Time of first sample in ISO YYYY-MM-DDTHH:MM:SS.FFFFFF format
 \fBFormat\fP:     'SLIST' (sample list) or 'TSPAIR' (time-sample pair)
 \fBType\fP:       Sample type 'INTEGER' or 'FLOAT' or 'FLOAT64'
-\fBUnits\fP:      Units of time-series, optional (will not be present in Mini-SEED)
-\fBHeaders\fP:    Mini-SEED header values and flags, optional
+\fBUnits\fP:      Units of time-series, optional (will not be present in miniSEED)
+\fBHeaders\fP:    miniSEED header values and flags, optional
 .fi
 
 The header line should not be wrapped and must contain the spaces and
 commas as specified in the general form.  The units field of the
 header is optional and will not be used by ascii2mseed (there is no
-place for units in Mini-SEED).  No blanks lines should exist between
+place for units in miniSEED).  No blanks lines should exist between
 the header and data samples.
 
 The \fBSourceName\fP field identifies the source of the time series
